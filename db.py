@@ -12,17 +12,20 @@ def init_db():
                 source TEXT NOT NULL,
                 title TEXT,
                 company TEXT,
-                location TEXT,
-                workload TEXT,
-                contract_type TEXT,
                 url TEXT,
                 scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 
                 -- Detail Page Extraction
+                publication_date TEXT DEFAULT NULL,
+                workload TEXT DEFAULT NULL,
+                contract_type TEXT DEFAULT NULL,
+                location TEXT DEFAULT NULL,
+                city TEXT DEFAULT NULL,
+                salary_estimate TEXT DEFAULT NULL,
                 full_description TEXT DEFAULT NULL,
                 raw_description_html TEXT DEFAULT NULL,
                 
-                -- LLM Processing State
+                -- LLM Layer Fields
                 is_junior INTEGER DEFAULT NULL,
                 junior_score REAL DEFAULT NULL,
                 stack_gap TEXT DEFAULT NULL,
@@ -31,6 +34,42 @@ def init_db():
             )
         """)
         conn.commit()
+
+def get_unprocessed_jobs(source: str):
+    """Fetches jobs from SQLite that haven't had their full description scraped yet."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT job_id, url FROM jobs WHERE full_description IS NULL AND source = ?", (source,))
+        return cursor.fetchall()
+
+def update_job_details(job_id: str, pub_date: str = None, workload: str = None, contract: str = None, 
+                       location: str = None, salary: str = None, clean_text: str = None, raw_html: str = None):
+    """Updates SQLite with newly scraped metadata and full description text."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            UPDATE jobs 
+            SET publication_date = :pub_date,
+                workload = :workload,
+                contract_type = :contract,
+                location = :location,
+                salary_estimate = :salary,
+                full_description = :clean_text,
+                raw_description_html = :raw_html,
+                status = 'details_extracted'
+            WHERE job_id = :job_id
+        """, {
+            "pub_date": pub_date,
+            "workload": workload,
+            "contract": contract,
+            "location": location,
+            "salary": salary,
+            "clean_text": clean_text,
+            "raw_html": raw_html,
+            "job_id": job_id
+        })
+        conn.commit()
+
 
 
 def insert_job(job_id: str, source: str, title: str, company: str, 

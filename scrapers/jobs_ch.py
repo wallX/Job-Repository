@@ -2,6 +2,11 @@ import json
 import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+import sys
+# Add project root directory to sys.path
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
 
 RAW_DATA_PATH = Path("data/raw_jobs.jsonl")
 
@@ -30,7 +35,7 @@ def save_db_payload(payload: dict):
         url=payload["url"]
     )
 
-def run_scraper(search_term="python", max_pages=3):
+def run_scraper(search_term="python", max_pages=1):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)  # Set to True for background execution
         context = browser.new_context()
@@ -80,7 +85,7 @@ def run_scraper(search_term="python", max_pages=3):
                    #"raw_html": item.inner_html()
                 }
 
-                save_raw_payload(raw_payload)
+                #save_raw_payload(raw_payload)
                 save_db_payload(raw_payload)
                 print(f"  Saved: {title.strip()} @ {company.strip()}")
 
@@ -97,4 +102,4 @@ def run_scraper(search_term="python", max_pages=3):
         browser.close()
 
 if __name__ == "__main__":
-    run_scraper(search_term="python", max_pages=2)
+    run_scraper(search_term="python", max_pages=1)
