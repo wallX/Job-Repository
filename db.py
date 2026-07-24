@@ -37,6 +37,10 @@ def init_db():
                 junior_score REAL DEFAULT NULL,
                 stack_gap TEXT DEFAULT NULL,
                 language_friction TEXT DEFAULT NULL,
+                language_llm TEXT DEFAULT NULL,
+                language_llm_only_english INTEGER DEFAULT NULL,
+                work_model TEXT DEFAULT NULL,
+                required_yoe INTEGER DEFAULT NULL,
                 llm_summary TEXT DEFAULT NULL,
                 
                 -- Timestamps
@@ -85,7 +89,12 @@ def save_llm_evaluation(
     junior_score: float,
     stack_gap: str,
     language_friction: str,
-    llm_summary: str
+    language_llm: List[str],
+    language_llm_only_english: bool,
+    work_model: str,
+    required_yoe: int,
+    llm_summary: str,
+    status: str = "Processed"
 ):
     """Updates SQLite with the structured evaluation result from the LLM."""
     with sqlite3.connect(DB_PATH) as conn:
@@ -95,8 +104,12 @@ def save_llm_evaluation(
                 junior_score = :junior_score,
                 stack_gap = :stack_gap,
                 language_friction = :language_friction,
+                language_llm = :language_llm,
                 llm_summary = :llm_summary,
-                status = 'evaluated'
+                language_llm_only_english = :language_llm_only_english,
+                work_model = :work_model,
+                required_yoe = :required_yoe,
+                status = :status
             WHERE job_id = :job_id
         """, {
             "job_id": job_id,
@@ -104,7 +117,12 @@ def save_llm_evaluation(
             "junior_score": junior_score,
             "stack_gap": stack_gap,
             "language_friction": language_friction,
-            "llm_summary": llm_summary
+            "language_llm": language_llm,
+            "language_llm_only_english": 1 if language_llm_only_english else 0,
+            "llm_summary": llm_summary,
+            "work_model": work_model,
+            "required_yoe": required_yoe,
+            "status": status
         })
         conn.commit()
 ########### Job Detail Update Functions ###########

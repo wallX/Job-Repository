@@ -94,7 +94,12 @@ def run_analysis_pipeline(batch_size: int = 10):
                 junior_score=eval_result.junior_score,
                 stack_gap=stack_gap_str,
                 language_friction=eval_result.language_friction,
-                llm_summary=eval_result.llm_summary
+                llm_summary=eval_result.llm_summary,
+                language_llm=eval_result.language_llm,
+                language_llm_only_english=eval_result.language_llm_only_english,
+                work_model=eval_result.work_model,
+                required_yoe=eval_result.required_yoe,
+                status="Processed"
             )
 
             print(f"  Score: {eval_result.junior_score}/10 | Junior: {eval_result.is_junior}")

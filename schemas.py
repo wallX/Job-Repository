@@ -24,10 +24,18 @@ class JobEvaluation(BaseModel):
     language_friction: str = Field(
         description="Assessment of language requirements (e.g., 'None: English adequate', 'High: Native German C1 required', 'Medium: French B2')."
     )
-    llm_summary: str = Field(
-        description="A concise 2-sentence summary explaining the key reasons for the score and any dealbreakers."
+    language_llm: List[str] = Field(
+        description="LLM's interpretation of the language requirements, extracted from the job description."
     )
-    required_yoe: Optional[int] = Field(
-        default=None,
-        description="Explicit years of experience required (e.g. 3), or None if unspecified."
+    language_llm_only_english: bool = Field(
+        description="True if the LLM determined that English alone is sufficient for the role, False if additional languages are required and mandatory."
+    )
+    work_model: str = Field(
+        description="The work model for the role (e.g., 'Remote', 'On-site', 'Hybrid', 'Flexible')."
+    )
+    required_yoe: int = Field(
+        description="Explicit years of experience required (e.g. 3), or an estimate based on the job description if unspecified. But add an observation in the summary if it's an estimate."
+    )
+    llm_summary: str = Field(
+        description="A concise summary of the job's requirements, responsibilities, and expectations as interpreted by the LLM."
     )
