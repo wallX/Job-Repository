@@ -129,7 +129,8 @@ def run_detail_scraper(batch_size: int):
             
                 # 1. Header Information
                 title = safe_extract_text(page, '[data-cy="vacancy-title"]')
-                company = safe_extract_text(page, 'a[data-cy="company-link"]')
+                #company = safe_extract_text(page, 'a[data-cy="company-link"]')
+                company = safe_extract_text(page, 'a[data-cy="company-link"] span')
                 logo_block = page.locator('div[data-cy="vacancy-logo"]')
 
 

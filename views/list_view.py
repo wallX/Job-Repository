@@ -11,10 +11,38 @@ if str(ROOT_DIR) not in sys.path:
 
 import db
 
+# Status options and associated color mappings
+STATUS_OPTIONS = ["Not Applied", "Applied", "Rejected", "Ghosted", "Accepted"]
 
-@st.dialog("📋 Full Job Details & LLM Analysis", width="large")
+STATUS_COLORS = {
+    "Not Applied": {"bg": "#e2e8f0", "text": "#475569", "border": "#cbd5e1"}, # Gray
+    "Applied":     {"bg": "#ffedd5", "text": "#c2410c", "border": "#fdba74"}, # Orange
+    "Rejected":    {"bg": "#fee2e2", "text": "#b91c1c", "border": "#fca5a5"}, # Red
+    "Ghosted":     {"bg": "#f3e8ff", "text": "#6b21a8", "border": "#d8b4fe"}, # Purple
+    "Accepted":    {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
+}
+def render_status_badge_html(status: str) -> str:
+    """Generates styled HTML badge without excess bottom/top margin."""
+    s = status if status in STATUS_COLORS else "Not Applied"
+    style = STATUS_COLORS[s]
+    return (
+        f'<span style="background-color: {style["bg"]}; color: {style["text"]}; '
+        f'border: 1px solid {style["border"]}; padding: 3px 10px; border-radius: 12px; '
+        f'font-size: 0.8rem; font-weight: 600; white-space: nowrap; display: inline-block; '
+        f'margin-top: 4px; margin-bottom: 0px;">{s}</span>'
+    )
+
+def on_status_change(job_id: str, selectbox_key: str):
+    """Callback triggered when the status dropdown changes directly on a card."""
+    new_status = st.session_state[selectbox_key]
+    db.update_job_application_data(job_id=job_id, application_status=new_status)
+    st.toast(f"Updated status to '{new_status}'")
+
+
+@st.dialog("📋 Full Job Details & Application Notes", width="large")
 def show_job_details_dialog(job: pd.Series):
-    """Renders the detailed inspector modal when 'Open Details' is clicked."""
+    """Modal details view with application status dropdown and updatable notes."""
+    job_id = str(job.get("job_id"))
     title = job.get("title") or "Untitled Job"
     company = job.get("company") or "Unknown Company"
     
@@ -25,16 +53,55 @@ def show_job_details_dialog(job: pd.Series):
 
     st.divider()
 
+    # --- EDITABLE APPLICATION SECTION ---
+    st.markdown("### 📝 Application Tracking")
+    
+    current_status = job.get("application_status") or "Not Applied"
+    if current_status not in STATUS_OPTIONS:
+        current_status = "Not Applied"
+        
+    current_notes = job.get("application_notes") or ""
+
+    with st.form(f"dialog_app_form_{job_id}"):
+        col_status, col_empty = st.columns([1, 1])
+        with col_status:
+            new_status = st.selectbox(
+                "Application Status",
+                options=STATUS_OPTIONS,
+                index=STATUS_OPTIONS.index(current_status),
+                key=f"dialog_status_{job_id}"
+            )
+
+        new_notes = st.text_area(
+            "Application Notes",
+            value=current_notes,
+            placeholder="e.g. Applied via referral on LinkedIn. Interview scheduled for Tuesday...",
+            height=110,
+            key=f"dialog_notes_{job_id}"
+        )
+
+        save_btn = st.form_submit_button("💾 Save Application Details", use_container_width=True)
+        if save_btn:
+            db.update_job_application_data(
+                job_id=job_id, 
+                application_status=new_status, 
+                application_notes=new_notes
+            )
+            st.success("✅ Application status and notes updated!")
+            st.rerun()
+
+    st.divider()
+
     # Metrics Row
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Status", str(job.get("status", "N/A")))
+    m1.metric("Pipeline Status", str(job.get("status", "N/A")))
     m2.metric("Junior Friendly", "YES" if job.get("is_junior") == 1 else "NO")
     
     j_score = job.get("junior_score")
     m3.metric("Junior Score", f"{j_score:.1f}/10" if pd.notna(j_score) else "N/A")
     m4.metric("Work Model", str(job.get("work_model") or "N/A"))
 
-    # LLM Breakdown
+    # LLM Summary
     st.markdown("### 🤖 LLM Summary")
     summary = job.get("llm_summary")
     if pd.notna(summary) and str(summary).strip():
@@ -42,40 +109,24 @@ def show_job_details_dialog(job: pd.Series):
     else:
         st.caption("Pending LLM analysis...")
 
-    col_meta, col_gaps = st.columns(2)
-    with col_meta:
-        st.markdown("**Structured Metrics:**")
-        st.json({
-            "Job ID": job.get("job_id"),
-            "Search Terms": job.get("search_term"),
-            "Required Experience (YoE)": job.get("required_yoe"),
-            "Language Friction": job.get("language_friction"),
-            "Contract Type": job.get("contract_type"),
-            "Workload": job.get("workload"),
-        })
+    # Stack Gaps
+    gap = job.get("stack_gap")
+    if pd.notna(gap) and str(gap).strip():
+        st.warning(f"**Tech Stack Gaps:** {gap}")
 
-    with col_gaps:
-        st.markdown("**Tech Stack Gaps / Requirements:**")
-        gap = job.get("stack_gap")
-        if pd.notna(gap) and str(gap).strip():
-            st.warning(str(gap))
-        else:
-            st.success("No significant stack gaps identified.")
-
-    # Full Text
+    # Full Description
     with st.expander("📄 Full Scraped Description"):
         desc = job.get("full_description")
         st.write(str(desc) if pd.notna(desc) else "No raw text available.")
 
 
 def render_job_card(job: pd.Series):
-    """Renders a single job offer card with compact action buttons."""
+    """Renders a single job offer card with compact action buttons and application status dropdown."""
     
     def clean_str(val, default="N/A"):
         if pd.notna(val) and str(val).strip():
             return str(val).strip()
         return default
-
 
     # 1. Company Logo via company_image_url with URL validation
     company_image_url = clean_str(job.get("company_image_url"), default="")
@@ -122,16 +173,45 @@ def render_job_card(job: pd.Series):
     company_url = clean_str(job.get("url"), default="")
     job_id = str(job.get("job_id"))
 
+    # Application Status
+    app_status = clean_str(job.get("application_status"), default="Not Applied")
+    if app_status not in STATUS_OPTIONS:
+        app_status = "Not Applied"
+
     # 3. Card Container
     with st.container(key=f"job_card_{job_id}", border=True):
-        col_header, col_actions = st.columns([3, 2])
+        col_header, col_status_select, col_actions,  = st.columns([2.8, 1.8, 1.4], vertical_alignment="top")
 
         with col_header:
-            st.markdown(f"### {company_logo_html} {title}", unsafe_allow_html=True)
+            # 1. Title
             st.markdown(
-                f"**{company}** &nbsp;|&nbsp; {source_icon_html} *Source:* `{source_name}`",
+                f'<h3 style="margin: 0; padding: 0; line-height: 1.2;">{company_logo_html} {title}</h3>', 
                 unsafe_allow_html=True
             )
+            
+            # 2. Company & Source
+            st.markdown(
+                f'<div style="margin-top: 4px; margin-bottom: 2px;">'
+                f'<strong>{company}</strong> &nbsp;|&nbsp; {source_icon_html} <em>Source:</em> <code>{source_name}</code>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+            # 3. Status Badge Underneath
+            st.markdown(render_status_badge_html(app_status), unsafe_allow_html=True)
+
+        #with col_status_select:
+        #    # Dropdown right on the card for instant status updates
+        #    sb_key = f"card_app_status_{job_id}"
+        #    st.selectbox(
+        #        "Application Status",
+        #        options=STATUS_OPTIONS,
+        #        index=STATUS_OPTIONS.index(app_status),
+        #        key=sb_key,
+        #        on_change=on_status_change,
+        #        args=(job_id, sb_key),
+        #        label_visibility="collapsed"
+        #    )
 
         with col_actions:
             # Reduced button sizes using custom column alignment
@@ -178,14 +258,18 @@ def render_list_view():
     # 🔍 FILTER BAR
     # =========================================================
     with st.expander("🔍 Filter Options", expanded=True):
-        col_search, col_status, col_tags, col_junior = st.columns([3, 2, 2, 2])
+        col_search, col_app_status, col_tags, col_junior = st.columns([3, 2, 2, 2])
 
         with col_search:
             search_query = st.text_input("Search Keywords", placeholder="Title, company, stack...", key="card_search")
 
-        with col_status:
-            all_statuses = sorted(list(df["status"].dropna().unique()))
-            selected_statuses = st.multiselect("Status", all_statuses, default=all_statuses, key="card_status")
+        with col_app_status:
+            selected_app_statuses = st.multiselect(
+                "App Status", 
+                STATUS_OPTIONS, 
+                default=STATUS_OPTIONS, 
+                key="card_app_status"
+            )
 
         with col_tags:
             all_tags = set()
@@ -202,8 +286,9 @@ def render_list_view():
     # =========================================================
     filtered_df = df.copy()
 
-    if selected_statuses:
-        filtered_df = filtered_df[filtered_df["status"].isin(selected_statuses)]
+    if "application_status" in filtered_df.columns and selected_app_statuses:
+        filtered_df["temp_app_status"] = filtered_df["application_status"].fillna("Not Applied")
+        filtered_df = filtered_df[filtered_df["temp_app_status"].isin(selected_app_statuses)]
 
     if junior_only and "is_junior" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["is_junior"] == 1]
@@ -221,7 +306,7 @@ def render_list_view():
 
     st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers")
 
-    #print(f"table header: {list(filtered_df.columns)}")
+    print(f"table header: {list(filtered_df.columns)}")
 
     # =========================================================
     # 🎴 CARDS LISTING

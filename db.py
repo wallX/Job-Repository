@@ -55,6 +55,10 @@ def init_db():
         "required_yoe": "INTEGER DEFAULT NULL",
         "llm_tags": "TEXT DEFAULT NULL",
         "llm_summary": "TEXT DEFAULT NULL",
+
+        # Personal Metadata
+        "application_status": "TEXT DEFAULT 'Not Applied'",
+        "application_notes": "TEXT DEFAULT ''",
         
         # Timestamps
         "added_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
@@ -318,6 +322,21 @@ def load_jobs_df() -> pd.DataFrame:
     """Loads all jobs from SQLite into a DataFrame ordered by newest first."""
     with get_connection() as conn:
         return pd.read_sql("SELECT * FROM jobs ORDER BY added_at DESC", conn)
+
+# db.py
+
+def update_job_application_data(job_id: str, application_status: str, application_notes: str = None) -> bool:
+    """Updates application status and notes for a specific job."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE jobs 
+            SET application_status = ?,
+                application_notes = COALESCE(?, application_notes)
+            WHERE job_id = ?
+        """, (application_status, application_notes, job_id))
+        conn.commit()
+        return True
 
 
 if __name__ == "__main__":
