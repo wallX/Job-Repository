@@ -123,7 +123,7 @@ def render_job_card(job: pd.Series):
     job_id = str(job.get("job_id"))
 
     # 3. Card Container
-    with st.container(border=True):
+    with st.container(key=f"job_card_{job_id}", border=True):
         col_header, col_actions = st.columns([3, 2])
 
         with col_header:
