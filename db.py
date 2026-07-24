@@ -52,6 +52,7 @@ def init_db():
         "language_llm_only_english": "INTEGER DEFAULT NULL",
         "work_model": "TEXT DEFAULT NULL",
         "required_yoe": "INTEGER DEFAULT NULL",
+        "llm_tags": "TEXT DEFAULT NULL",
         "llm_summary": "TEXT DEFAULT NULL",
         
         # Timestamps
@@ -130,6 +131,7 @@ def save_llm_evaluation(
     work_model: str,
     required_yoe: int,
     llm_summary: str,
+    llm_tags: str,
     status: str = "Processed"
 ):
     """Updates SQLite with the structured evaluation result from the LLM."""
@@ -141,6 +143,7 @@ def save_llm_evaluation(
                 stack_gap = :stack_gap,
                 language_friction = :language_friction,
                 language_llm = :language_llm,
+                llm_tags = :llm_tags,
                 llm_summary = :llm_summary,
                 language_llm_only_english = :language_llm_only_english,
                 work_model = :work_model,
@@ -158,6 +161,7 @@ def save_llm_evaluation(
             "llm_summary": llm_summary,
             "work_model": work_model,
             "required_yoe": required_yoe,
+            "llm_tags": llm_tags,
             "status": status
         })
         conn.commit()

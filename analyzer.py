@@ -91,6 +91,9 @@ def run_analysis_pipeline(batch_size: int = 10):
             #Format language_llm list into a clean comma-separated string for SQLite
             language_llm_str = ", ".join(eval_result.language_llm) if eval_result.language_llm else "None"
 
+            # Format LLM tags into a clean comma-separated string for SQLite
+            llm_tags_str = ", ".join(eval_result.llm_tags) if eval_result.llm_tags else "None"
+
             save_llm_evaluation(
                 job_id=job_id,
                 is_junior=eval_result.is_junior,
@@ -102,6 +105,7 @@ def run_analysis_pipeline(batch_size: int = 10):
                 language_llm_only_english=eval_result.language_llm_only_english,
                 work_model=eval_result.work_model,
                 required_yoe=eval_result.required_yoe,
+                llm_tags=llm_tags_str,
                 status="Processed"
             )
 

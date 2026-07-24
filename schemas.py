@@ -27,8 +27,12 @@ class JobEvaluation(BaseModel):
         description="The work model for the role (e.g., 'Remote', 'On-site', 'Hybrid', 'Flexible')."
     )
     required_yoe: int = Field(
-        description="Explicit years of experience required (e.g. 3), or an integer estimate based on the job description if unspecified. But add an observation in the summary if it's an estimate. Result should 0 if the job is explicitly for juniors or interns. Result should be a number."
+        description="Number of years of experience required, use explicit values when available if not specified try to estimate. Result should be a integer number. If the job is suitable for junior developers, this should be 0-3. Mid-level positions typically require 3-5 years. If senior, this should be 5 or more."
     )
+    llm_tags: List[str] = Field(
+        description="List of tags or keywords extracted by the LLM from the job description, highlighting key skills, technologies, or requirements mentioned in the posting."
+    )
+
     llm_summary: str = Field(
         description="If description is not in English make the full translation and at the end a concise summary in English. Include any notable details about the role, company, or required skills and requirements, responsibilities, expectations as interpreted by the LLM."
     )
