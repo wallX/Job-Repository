@@ -54,11 +54,25 @@ st.markdown("""
 
 
 # --- TAB 1: LIST & FILTER ---
-tab_list, tab_ingest = st.tabs(["All Jobs", "Ingest New Offer"])
 
-with tab_list:
+
+# Use segmented_control (or st.radio) for top tab-like navigation
+active_tab = st.segmented_control(
+    "Navigation", 
+    ["All Jobs", "Ingest New Offer"], 
+    default="All Jobs",
+    label_visibility="collapsed"
+)
+
+# --- TAB 1: ALL JOBS ---
+if active_tab == "All Jobs":
+    # Sidebar filters will ONLY exist when this tab is active
+    st.sidebar.divider()
+    
+    # Render all your sidebar filters here
     render_list_view()
 
 # --- TAB 2: MANUAL INGEST ---
-with tab_ingest:
+elif active_tab == "Ingest New Offer":
+    # Sidebar stays completely clean!
     render_ingest_view()

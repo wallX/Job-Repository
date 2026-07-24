@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 from urllib.parse import urlparse
+import unicodedata
 
 import sys
 from pathlib import Path
@@ -10,6 +11,30 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 import db
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalizes text by converting to lowercase, removing accents/diacritics 
+    (e.g., 'Zürich' -> 'zurich'), and stripping non-alphanumeric characters.
+    """
+    if not text or pd.isna(text):
+        return ""
+    
+    # 1. Convert to string and lowercase
+    text = str(text).lower()
+    
+    # 2. Separate characters and combining accents (NFKD form)
+    nfkd_form = unicodedata.normalize('NFKD', text)
+    
+    # 3. Keep base characters, discarding accent markers (e.g., 'ü' -> 'u')
+    base_text = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
+    
+    # 4. Replace non-alphanumeric characters with spaces (strips punctuation)
+    cleaned = "".join([c if c.isalnum() else " " for c in base_text])
+    
+    # 5. Normalize whitespace
+    return " ".join(cleaned.split())
 
 # Status options and associated color mappings
 STATUS_OPTIONS = ["Not Applied", "Applied", "Rejected", "Ghosted", "Interviewing", "Accepted"]
@@ -40,32 +65,37 @@ def on_status_change(job_id: str, selectbox_key: str):
     st.toast(f"Updated status to '{new_status}'")
 
 
-@st.dialog("📋 Full Job Details & Application Notes", width="large")
+@st.dialog("Full Job Details & Application Notes", width="large")
 def show_job_details_dialog(job: pd.Series):
-    """Modal details view with application status dropdown and updatable notes."""
+    """Modal details view with application status dropdown, notes, and LLM foreign-friendliness metrics."""
     job_id = str(job.get("job_id"))
     title = job.get("title") or "Untitled Job"
     company = job.get("company") or "Unknown Company"
     
     st.subheader(f"{title} @ {company}")
     
-    if job.get("url"):
-        st.link_button("🌐 View Original Job Posting", job["url"])
-
-    st.divider()
-
-    # --- EDITABLE APPLICATION SECTION ---
-    st.markdown("### 📝 Application Tracking")
-    
+    # --- HEADER LINK & BADGE ROW ---
     current_status = job.get("application_status") or "Not Applied"
     if current_status not in STATUS_OPTIONS:
         current_status = "Not Applied"
-        
-    current_notes = job.get("application_notes") or ""
 
-    with st.form(f"dialog_app_form_{job_id}"):
-        col_status, col_empty = st.columns([1, 1])
-        with col_status:
+    # Use numeric ratios: tight space for button & badge, remaining space absorbed by spacer
+    col_link, col_badge, _ = st.columns([1.2, 1, 8], vertical_alignment="center")
+    
+    with col_link:
+        if job.get("url"):
+            st.link_button("🌐 View Original Job Posting", job["url"])
+            
+    with col_badge:
+        st.markdown(render_status_badge_html(current_status), unsafe_allow_html=True)
+
+    st.divider()
+
+    # --- EDITABLE APPLICATION TRACKING (EXPANDER DROPDOWN) ---
+    with st.expander("📝 Application Tracking & Notes", expanded=False):
+        current_notes = job.get("application_notes") or ""
+
+        with st.form(f"dialog_app_form_{job_id}"):
             new_status = st.selectbox(
                 "Application Status",
                 options=STATUS_OPTIONS,
@@ -73,56 +103,74 @@ def show_job_details_dialog(job: pd.Series):
                 key=f"dialog_status_{job_id}"
             )
 
-        new_notes = st.text_area(
-            "Application Notes",
-            value=current_notes,
-            placeholder="e.g. Applied via referral on LinkedIn. Interview scheduled for Tuesday...",
-            height=110,
-            key=f"dialog_notes_{job_id}"
-        )
-
-        save_btn = st.form_submit_button("💾 Save Application Details", use_container_width=True)
-        if save_btn:
-            db.update_job_application_data(
-                job_id=job_id, 
-                application_status=new_status, 
-                application_notes=new_notes
+            new_notes = st.text_area(
+                "Application Notes",
+                value=current_notes,
+                placeholder="e.g. Applied via referral on LinkedIn. Interview scheduled for Tuesday...",
+                height=110,
+                key=f"dialog_notes_{job_id}"
             )
-            st.success("✅ Application status and notes updated!")
-            st.rerun()
+
+            save_btn = st.form_submit_button("💾 Save Application Details", use_container_width=True)
+            if save_btn:
+                db.update_job_application_data(
+                    job_id=job_id, 
+                    application_status=new_status, 
+                    application_notes=new_notes
+                )
+                st.success("✅ Application status and notes updated!")
+                st.rerun()
 
     st.divider()
 
-    # Metrics Row
+    # --- METRICS GRID ---
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Pipeline Status", str(job.get("status", "N/A")))
     m2.metric("Junior Friendly", "YES" if job.get("is_junior") == 1 else "NO")
     
     j_score = job.get("junior_score")
     m3.metric("Junior Score", f"{j_score:.1f}/10" if pd.notna(j_score) else "N/A")
-    m4.metric("Work Model", str(job.get("work_model") or "N/A"))
+    
+    ff_score = job.get("foreign_friendly_score")
+    m4.metric("Foreign Score", f"{ff_score:.1f}/10" if pd.notna(ff_score) else "N/A")
 
-    # LLM Summary
+    # --- LLM TAGS & FOREIGN FRIENDLY REASONS ---
+    st.markdown("### 🌍 Foreign Friendliness & Stack Insights")
+    
+    ff_reasons = job.get("foreign_friendly_reasons")
+    if pd.notna(ff_reasons) and str(ff_reasons).strip():
+        st.info(f"**Foreign Friendliness Assessment:**\n{ff_reasons}")
+    else:
+        st.caption("No foreign friendliness evaluation recorded.")
+
+    llm_tags = job.get("llm_tags")
+    if pd.notna(llm_tags) and str(llm_tags).strip():
+        if isinstance(llm_tags, list):
+            tags_str = ", ".join(llm_tags)
+        else:
+            tags_str = str(llm_tags)
+        st.markdown(f"🏷️ **LLM Generated Tags:** `{tags_str}`")
+
+    # --- LLM SUMMARY & STACK GAPS ---
     st.markdown("### 🤖 LLM Summary")
     summary = job.get("llm_summary")
     if pd.notna(summary) and str(summary).strip():
-        st.info(str(summary))
+        st.write(str(summary))
     else:
         st.caption("Pending LLM analysis...")
 
-    # Stack Gaps
     gap = job.get("stack_gap")
     if pd.notna(gap) and str(gap).strip():
         st.warning(f"**Tech Stack Gaps:** {gap}")
 
-    # Full Description
+    # --- FULL DESCRIPTION ---
     with st.expander("📄 Full Scraped Description"):
         desc = job.get("full_description")
         st.write(str(desc) if pd.notna(desc) else "No raw text available.")
 
 
 def render_job_card(job: pd.Series):
-    """Renders a single job offer card with compact action buttons and application status dropdown."""
+    """Renders a single job offer card with compact action buttons and aligned metadata."""
     
     def clean_str(val, default="N/A"):
         if pd.notna(val) and str(val).strip():
@@ -174,6 +222,27 @@ def render_job_card(job: pd.Series):
     company_url = clean_str(job.get("url"), default="")
     job_id = str(job.get("job_id"))
 
+    # Tags & Metrics Processing
+    search_terms_raw = clean_str(job.get("search_term"), default="")
+    search_terms = [t.strip() for t in search_terms_raw.split(",") if t.strip()] if search_terms_raw != "N/A" else []
+
+    llm_tags_raw = job.get("llm_tags")
+    if isinstance(llm_tags_raw, list):
+        llm_tags = [str(t).strip() for t in llm_tags_raw if str(t).strip()]
+    elif pd.notna(llm_tags_raw) and str(llm_tags_raw).strip():
+        llm_tags = [t.strip() for t in str(llm_tags_raw).split(",") if t.strip()]
+    else:
+        llm_tags = []
+
+    is_junior_val = job.get("is_junior")
+    junior_friendly_str = "🟢 YES" if is_junior_val == 1 or is_junior_val is True else "🔴 NO"
+
+    yoe_val = job.get("required_yoe")
+    required_yoe_str = f"{yoe_val} yrs" if pd.notna(yoe_val) and str(yoe_val).strip() else "N/A"
+
+    ff_score = job.get("foreign_friendly_score")
+    ff_score_str = f"{ff_score:.1f}/10" if pd.notna(ff_score) else "N/A"
+
     # Application Status
     app_status = clean_str(job.get("application_status"), default="Not Applied")
     if app_status not in STATUS_OPTIONS:
@@ -181,16 +250,16 @@ def render_job_card(job: pd.Series):
 
     # 3. Card Container
     with st.container(key=f"job_card_{job_id}", border=True):
-        col_header, col_status_select, col_actions,  = st.columns([2.8, 1.8, 1.4], vertical_alignment="top")
+        col_header, col_actions = st.columns([4, 1.2], vertical_alignment="top")
 
         with col_header:
-            # 1. Title
+            # Title
             st.markdown(
                 f'<h3 style="margin: 0; padding: 0; line-height: 1.2;">{company_logo_html} {title}</h3>', 
                 unsafe_allow_html=True
             )
             
-            # 2. Company & Source
+            # Company & Source
             st.markdown(
                 f'<div style="margin-top: 4px; margin-bottom: 2px;">'
                 f'<strong>{company}</strong> &nbsp;|&nbsp; {source_icon_html} <em>Source:</em> <code>{source_name}</code>'
@@ -198,119 +267,181 @@ def render_job_card(job: pd.Series):
                 unsafe_allow_html=True
             )
 
-            # 3. Status Badge Underneath
+            # Status Badge Underneath
             st.markdown(render_status_badge_html(app_status), unsafe_allow_html=True)
 
-        #with col_status_select:
-        #    # Dropdown right on the card for instant status updates
-        #    sb_key = f"card_app_status_{job_id}"
-        #    st.selectbox(
-        #        "Application Status",
-        #        options=STATUS_OPTIONS,
-        #        index=STATUS_OPTIONS.index(app_status),
-        #        key=sb_key,
-        #        on_change=on_status_change,
-        #        args=(job_id, sb_key),
-        #        label_visibility="collapsed"
-        #    )
-
         with col_actions:
-            # Reduced button sizes using custom column alignment
             btn_c1, btn_c2 = st.columns(2)
             
             with btn_c1:
-                # Triggers the Streamlit Modal
                 if st.button("Details", key=f"details_{job_id}", use_container_width=True):
                     show_job_details_dialog(job)
 
             with btn_c2:
-                # Compact Open Offer Link Button
                 if company_url:
                     st.link_button("Offer", company_url, use_container_width=True)
 
         st.divider()
 
-        # Row 1: Location, Work Model, Workload, Contract Type
+        # Tags Section (Search terms & LLM tags)
+        if search_terms or llm_tags:
+            tags_html = ""
+            for term in search_terms:
+                tags_html += f'<span style="background-color: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; margin-right: 4px; display: inline-block; margin-bottom: 4px;">🔍 {term}</span>'
+            for tag in llm_tags:
+                tags_html += f'<span style="background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 500; margin-right: 4px; display: inline-block; margin-bottom: 4px;">🏷️ {tag}</span>'
+            
+            st.markdown(f'<div style="margin-bottom: 10px;">{tags_html}</div>', unsafe_allow_html=True)
+
+        # Row 1: Core Job Conditions
         c1, c2, c3, c4 = st.columns(4)
         c1.markdown(f"📍 **Location:**\n{location}")
         c2.markdown(f"🏠 **Work Model:**\n{work_model}")
         c3.markdown(f"⏱️ **Workload:**\n{workload}")
-        c4.markdown(f"📜 **Contract Type:**\n{contract_type}")
+        c4.markdown(f"📜 **Contract:**\n{contract_type}")
 
-        st.write("") 
-
-        # Row 2: Publication Date & Language
-        c5, c6 = st.columns(2)
-        c5.markdown(f"📅 **Published:**\n{pub_date}")
-        c6.markdown(f"🗣️ **Language:**\n{language}")
-
+        # Row 2: Candidate Match & Post Info
+        c5, c6, c7, c8 = st.columns(4)
+        c5.markdown(f"🎓 **Junior:**\n{junior_friendly_str}")
+        c6.markdown(f"⏳ **YoE:**\n{required_yoe_str}")
+        c7.markdown(f"🌍 **Foreign Score:**\n{ff_score_str}")
+        c8.markdown(f"📅 **Published:**\n{pub_date} *({language})*")
 
 def render_list_view():
-    """Renders the job offers as visual cards with filtering."""
-    st.subheader("All Job Offers")
-
+    """Renders job offers as visual cards with sidebar filtering."""
+    
     df = db.load_jobs_df()
 
     if df.empty:
+        st.subheader("All Job Offers")
         st.info("No jobs found in database. Use the 'Ingest New Offer' tab to add some!")
         return
 
     # =========================================================
-    # 🔍 FILTER BAR
+    # 👈 SIDEBAR FILTER NAVIGATION
     # =========================================================
-    with st.expander("🔍 Filter Options", expanded=True):
-        col_search, col_app_status, col_tags, col_junior = st.columns([3, 2, 2, 2])
+    st.sidebar.header("🔍 Filter Job Offers")
 
-        with col_search:
-            search_query = st.text_input("Search Keywords", placeholder="Title, company, stack...", key="card_search")
+    # 1. Broad Search Input (ID, Title, Company, Stack, Summary)
+    search_query = st.sidebar.text_input(
+        "Keyword Search", 
+        placeholder="ID, Title, Company, Stack...", 
+        key="sidebar_search"
+    )
 
-        with col_app_status:
-            selected_app_statuses = st.multiselect(
-                "App Status", 
-                STATUS_OPTIONS, 
-                default=STATUS_OPTIONS, 
-                key="card_app_status"
-            )
+    # 2. Application Status Multiselect
+    selected_app_statuses = st.sidebar.multiselect(
+        "Application Status", 
+        options=STATUS_OPTIONS, 
+        default=STATUS_OPTIONS, 
+        key="sidebar_app_status"
+    )
 
-        with col_tags:
-            all_tags = set()
-            for row in df["search_term"].dropna():
-                all_tags.update([t.strip() for t in row.split(",") if t.strip()])
-            selected_tags = st.multiselect("Search Terms", sorted(list(all_tags)), key="card_tags")
+    # 3. Dynamic Location Filter
+    all_locations = set()
+    for row in df["location"].fillna(df["city"]).dropna():
+        # Split on commas or slashes if multiple locations exist in one string
+        for loc in str(row).split(","):
+            cleaned = loc.strip()
+            if cleaned and cleaned.lower() != "n/a":
+                all_locations.add(cleaned)
 
-        with col_junior:
-            st.write(" ")
-            junior_only = st.checkbox("Junior Only", value=False, key="card_junior")
+    selected_locations = st.sidebar.multiselect(
+        "Locations / Cities", 
+        options=sorted(list(all_locations)), 
+        key="sidebar_locations"
+    )
+
+    # 4. Dynamic Search Terms Filter
+    all_terms = set()
+    for row in df["search_term"].dropna():
+        all_terms.update([t.strip() for t in str(row).split(",") if t.strip()])
+
+    selected_terms = st.sidebar.multiselect(
+        "Search Terms / Query", 
+        options=sorted(list(all_terms)), 
+        key="sidebar_terms"
+    )
+
+    # 5. Checkbox Filters (Junior & Foreign Friendly)
+    st.sidebar.divider()
+    col_j, col_ff = st.sidebar.columns(2)
+    with col_j:
+        junior_only = st.checkbox("👶 Junior Only", value=False, key="sidebar_junior")
+    with col_ff:
+        foreign_only = st.checkbox("🌍 Foreign Friendly", value=False, key="sidebar_foreign")
+
 
     # =========================================================
     # 🎯 APPLY FILTERS
     # =========================================================
     filtered_df = df.copy()
 
+    # Application Status Filter
     if "application_status" in filtered_df.columns and selected_app_statuses:
         filtered_df["temp_app_status"] = filtered_df["application_status"].fillna("Not Applied")
         filtered_df = filtered_df[filtered_df["temp_app_status"].isin(selected_app_statuses)]
 
+    # Junior Only Filter
     if junior_only and "is_junior" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["is_junior"] == 1]
 
-    if selected_tags and "search_term" in filtered_df.columns:
-        pattern = "|".join(selected_tags)
-        filtered_df = filtered_df[filtered_df["search_term"].str.contains(pattern, case=False, na=False)]
+    # Foreign Friendly Filter (Score >= 7 or English only)
+    if foreign_only:
+        ff_condition = pd.Series(False, index=filtered_df.index)
+        if "foreign_friendly_score" in filtered_df.columns:
+            ff_condition |= filtered_df["foreign_friendly_score"] >= 7.0
+        if "language_llm_only_english" in filtered_df.columns:
+            ff_condition |= filtered_df["language_llm_only_english"] == 1
+        filtered_df = filtered_df[ff_condition]
+
+    # Location Filter
+    if selected_locations and ("location" in filtered_df.columns or "city" in filtered_df.columns):
+        loc_pattern = "|".join(selected_locations)
+        loc_match = filtered_df["location"].astype(str).str.contains(loc_pattern, case=False, na=False)
+        city_match = filtered_df["city"].astype(str).str.contains(loc_pattern, case=False, na=False)
+        filtered_df = filtered_df[loc_match | city_match]
+
+    # Search Terms Filter
+    if selected_terms and "search_term" in filtered_df.columns:
+        term_pattern = "|".join(selected_terms)
+        filtered_df = filtered_df[filtered_df["search_term"].astype(str).str.contains(term_pattern, case=False, na=False)]
 
     if search_query:
-        query = search_query.lower()
-        title_match = filtered_df["title"].str.lower().str.contains(query, na=False) if "title" in filtered_df else False
-        company_match = filtered_df["company"].str.lower().str.contains(query, na=False) if "company" in filtered_df else False
-        summary_match = filtered_df["llm_summary"].str.lower().str.contains(query, na=False) if "llm_summary" in filtered_df else False
-        filtered_df = filtered_df[title_match | company_match | summary_match]
+        # Split search query into normalized individual tokens (words)
+        query_tokens = normalize_text(search_query).split()
 
+        if query_tokens:
+            def matches_query(row: pd.Series) -> bool:
+                # Combine all searchable fields into a single text blob
+                fields_to_search = [
+                    row.get("job_id"),
+                    row.get("title"),
+                    row.get("company"),
+                    row.get("location"),
+                    row.get("city"),
+                    row.get("llm_summary"),
+                    row.get("stack_gap"),
+                    row.get("full_description"),
+                    row.get("search_term"),
+                    row.get("llm_tags")
+                ]
+                
+                # Normalize the combined searchable text for this job offer
+                searchable_text = normalize_text(" ".join([str(f) for f in fields_to_search if pd.notna(f)]))
+                
+                # Ensure ALL query tokens appear in the searchable text (order-independent)
+                return all(token in searchable_text for token in query_tokens)
+
+            # Apply fuzzy matching across all rows
+            filtered_df = filtered_df[filtered_df.apply(matches_query, axis=1)]
+
+
+    # =========================================================
+    # 🎴 CARDS LISTING MAIN VIEW
+    # =========================================================
+    st.subheader("All Job Offers")
     st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers")
 
-   # print(f"table header: {list(filtered_df.columns)}")
-
-    # =========================================================
-    # 🎴 CARDS LISTING
-    # =========================================================
     for idx, job in filtered_df.iterrows():
         render_job_card(job)
