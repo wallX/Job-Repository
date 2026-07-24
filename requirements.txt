@@ -2,3 +2,4 @@ pytest-playwright
 pydantic
 instructor
 litellm
+python-dotenv

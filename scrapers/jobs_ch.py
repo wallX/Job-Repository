@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -6,14 +7,32 @@ from db import get_unprocessed_jobs, update_job_details
 import sys
 import time
 import random
-
+from scrapers.base import BaseScraper
+import config
 
 # Add project root directory to sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-DB_PATH = Path("data/pipeline.db")
+DB_PATH = Path(config.DB_PATH)
+
+class JobsChScraper(BaseScraper):
+    source_name = "jobs_ch"
+
+    def can_handle_url(self, url: str) -> bool:
+        return "jobs.ch" in url
+
+    def run(self) -> None:
+        JobsChScraperService()
+
+    def extract_job_id(self, url: str) -> str:
+        """Extracts GUID from vacancy URLs like /en/vacancies/detail/24d79bae-.../"""
+        match = re.search(r'/detail/([a-f0-9\-]+)/?', url)
+        return match.group(1) if match else str(hash(url))
+
+
+
 
 
 def safe_extract_text(parent_locator, selector: str) -> str | None:
@@ -133,6 +152,9 @@ def run_detail_scraper():
 
     browser.close()
 
+# Implement as a service
+def JobsChScraperService():
+    run_detail_scraper()
 
 if __name__ == "__main__":
-    run_detail_scraper()
+    JobsChScraperService()

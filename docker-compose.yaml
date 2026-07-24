@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # 1. Local LLM Service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-srv
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+
+  # 2. Playwright Scraper Service
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.scraper
+    container_name: scraper-srv
+    volumes:
+      - ./data:/app/data   # Shared SQLite database mount
+    command: python scrapers/scrape_jobs_ch_details.py
+
+  # 3. LLM Analyzer Service
+  analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.analyzer
+    container_name: analyzer-srv
+    depends_on:
+      - ollama
+    environment:
+      - DEFAULT_MODEL=ollama/llama3.1
+      - OLLAMA_HOST=http://ollama-srv:11434
+    volumes:
+      - ./data:/app/data   # Shared SQLite database mount
+    command: python analyzer.py
+
+volumes:
+  ollama_storage:

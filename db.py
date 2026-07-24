@@ -2,6 +2,8 @@ import sqlite3
 from pathlib import Path
 from typing import List
 
+from pydantic import json
+
 DB_PATH = Path("data/pipeline.db")
 
 def init_db():
@@ -11,15 +13,17 @@ def init_db():
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id TEXT PRIMARY KEY,
                 source TEXT NOT NULL,
+                url TEXT UNIQUE,
+                search_term TEXT DEFAULT NULL,
+                status TEXT DEFAULT 'new',
+                
+                -- Basic Metadata
                 title TEXT,
                 company TEXT,
                 company_image_url TEXT DEFAULT NULL,
-                url TEXT UNIQUE,
-                scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                search_term TEXT DEFAULT NULL,
+
                 
                 -- Detail Page Extraction
-                publication_date TEXT DEFAULT NULL,
                 workload TEXT DEFAULT NULL,
                 contract_type TEXT DEFAULT NULL,
                 location TEXT DEFAULT NULL,
@@ -34,7 +38,11 @@ def init_db():
                 stack_gap TEXT DEFAULT NULL,
                 language_friction TEXT DEFAULT NULL,
                 llm_summary TEXT DEFAULT NULL,
-                status TEXT DEFAULT 'new',
+                
+                -- Timestamps
+                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                scraped_at DATETIME DEFAULT NULL,
+                publication_date DATETIME DEFAULT NULL,
                 applied_at DATETIME DEFAULT NULL
             )
         """)
@@ -171,6 +179,56 @@ def insert_job(job_id: str, source: str, title: str, company: str,
         ))
         conn.commit()
 
+def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = None) -> bool:
+    """
+    Inserts a new job entry into the database with minimal fields.
+    If the job_id already exists, it appends any new search terms to the existing list.
+    """
+    search_terms = search_terms or []
+    
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        
+        # Check if job already exists
+        cursor.execute("SELECT search_term FROM jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+
+        if row is None:
+            # New Entry: Store new search terms as a JSON string
+            terms_string = ", ".join(set(search_terms))
+            cursor.execute("""
+                INSERT INTO jobs (job_id, source, url, search_term, status)
+                VALUES (?, ?, ?, ?, 'new')
+            """, (job_id, source, url, terms_string))
+            conn.commit()
+            return True  # Inserted new
+        else:
+            # Existing Entry: Parse existing JSON array, combine, and update
+            existing_raw = row[0]
+            existing_terms = []
+            
+            if existing_raw:
+                # Split, trim whitespace, and filter out any empty strings
+                existing_terms = [t.strip() for t in existing_raw.split(",") if t.strip()]
+                
+                # Merge existing and new terms while preserving uniqueness
+                combined_terms = existing_terms + search_terms
+                unique_terms = list(set(combined_terms))
+                
+                # Join into a clean, comma-separated string
+                updated_json = ", ".join(unique_terms)
+            else:
+                # Handle case where existing_raw is empty or None
+                unique_terms = list(set(search_terms))
+                updated_json = ", ".join(unique_terms)
+
+            cursor.execute("""
+                UPDATE jobs 
+                SET search_term = ? 
+                WHERE job_id = ?
+            """, (updated_json, job_id))
+            conn.commit()
+            return False  # Appended to existing
 
 
 
