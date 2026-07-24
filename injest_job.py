@@ -45,7 +45,7 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
 
         if is_new:
             added_count += 1
-            print(f"  ✓ [{idx}/{len(url_list)}] Inserted New ({source}): {job_id}")
+            print(f"  [{idx}/{len(url_list)}] Inserted New ({source}): {job_id}")
         else:
             updated_count += 1
             print(f"  [{idx}/{len(url_list)}] Appended Terms to Existing: {job_id}")
