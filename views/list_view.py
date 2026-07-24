@@ -139,13 +139,13 @@ def render_job_card(job: pd.Series):
             
             with btn_c1:
                 # Triggers the Streamlit Modal
-                if st.button("🔍 Details", key=f"details_{job_id}", use_container_width=True):
+                if st.button("Details", key=f"details_{job_id}", use_container_width=True):
                     show_job_details_dialog(job)
 
             with btn_c2:
                 # Compact Open Offer Link Button
                 if company_url:
-                    st.link_button("🚀 Offer", company_url, use_container_width=True)
+                    st.link_button("Offer", company_url, use_container_width=True)
 
         st.divider()
 

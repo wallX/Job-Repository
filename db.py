@@ -247,8 +247,12 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
     """
     Inserts a new job entry into the database with minimal fields.
     If the job_id already exists, it appends any new search terms to the existing list.
+    All search terms are cleaned and title-cased (e.g. "test" -> "Test").
     """
     search_terms = search_terms or []
+    
+    # Title-case incoming terms
+    normalized_incoming = [t.strip().title() for t in search_terms if t.strip()]
     
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -258,8 +262,8 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
         row = cursor.fetchone()
 
         if row is None:
-            # New Entry: Store new search terms as a JSON string
-            terms_string = ", ".join(set(search_terms))
+            # New Entry: Store title-cased terms as a comma-separated string
+            terms_string = ", ".join(sorted(set(normalized_incoming)))
             cursor.execute("""
                 INSERT INTO jobs (job_id, source, url, search_term, status)
                 VALUES (?, ?, ?, ?, 'New')
@@ -267,24 +271,16 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
             conn.commit()
             return True  # Inserted new
         else:
-            # Existing Entry: Parse existing JSON array, combine, and update
+            # Existing Entry: Parse existing terms, title-case them, combine, and update
             existing_raw = row[0]
             existing_terms = []
             
             if existing_raw:
-                # Split, trim whitespace, and filter out any empty strings
-                existing_terms = [t.strip() for t in existing_raw.split(",") if t.strip()]
+                existing_terms = [t.strip().title() for t in existing_raw.split(",") if t.strip()]
                 
-                # Merge existing and new terms while preserving uniqueness
-                combined_terms = existing_terms + search_terms
-                unique_terms = list(set(combined_terms))
-                
-                # Join into a clean, comma-separated string
-                updated_json = ", ".join(unique_terms)
-            else:
-                # Handle case where existing_raw is empty or None
-                unique_terms = list(set(search_terms))
-                updated_json = ", ".join(unique_terms)
+            combined_terms = existing_terms + normalized_incoming
+            unique_terms = sorted(list(set(combined_terms)))
+            updated_json = ", ".join(unique_terms)
 
             cursor.execute("""
                 UPDATE jobs 
@@ -296,7 +292,7 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
 
 ########### UI Functions ###########
 def fetch_existing_tags() -> list[str]:
-    """Retrieves unique search terms for the tag dropdown."""
+    """Retrieves unique, capitalized search terms stored in SQLite for the dropdown."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT search_term FROM jobs WHERE search_term IS NOT NULL")
@@ -305,12 +301,17 @@ def fetch_existing_tags() -> list[str]:
     tags = set()
     for row in raw_rows:
         if row[0]:
-            # Split comma-separated search terms stored in the DB
-            terms = [t.strip() for t in row[0].split(",") if t.strip()]
+            # Split comma-separated terms, trim whitespace, and capitalize each word
+            terms = [t.strip().title() for t in row[0].split(",") if t.strip()]
             tags.update(terms)
             
-    default_tags = ["Python", "Backend", "Fullstack", "Data Engineer", "Junior"]
-    return sorted(list(tags.union(default_tags)))
+    default_tags = ["Python", "Backend", "Fullstack", "Data Engineer", "Junior", "Developer"]
+    
+    # Capitalize defaults and combine with DB tags
+    normalized_defaults = [t.title() for t in default_tags]
+    all_unique_tags = sorted(list(tags.union(normalized_defaults)))
+    
+    return all_unique_tags
 
 
 def load_jobs_df() -> pd.DataFrame:

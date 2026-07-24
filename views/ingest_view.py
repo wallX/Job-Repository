@@ -55,22 +55,19 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
     print(f"\n Finished: {added_count} new job(s) added, {updated_count} updated with search terms.")
 
 def render_ingest_view():
-    st.subheader("Ingest New Job Offer")
+    st.subheader("➕ Ingest New Job Offer")
     st.caption("Enter a job URL and select search terms. The scraper and LLM analyzer will handle the rest.")
 
-    # Keep track of tag options in session state
     if "available_tags" not in st.session_state:
         st.session_state.available_tags = db.fetch_existing_tags()
 
     with st.form("manual_ingest_form", clear_on_submit=True):
-        # 1. URL Input Field
         url_input = st.text_input(
             "Job Offer URL",
-            placeholder="https://www.jobs.ch/en/vacancies/detail/12345678-1234-5678-1234-567812345678/",
-            help="Direct web link to the job posting. Supported sources: jobs.ch"
+            placeholder="https://www.jobs.ch/en/vacancies/detail/cc950237-d3a0-4eaa-aa97-7dc7441bb6ca/",
+            help="Direct web link to the job posting."
         )
 
-        # 2. Search Terms List Box
         selected_tags = st.multiselect(
             "Search Terms / Tags",
             options=st.session_state.available_tags,
@@ -88,15 +85,20 @@ def render_ingest_view():
                 st.error("Please enter a valid Job Offer URL!")
             else:
                 try:
-                    # Save any newly typed tags to session state so they persist in the UI
-                    for tag in selected_tags:
+                    # 1. Normalize user inputs: trim whitespace and Title Case (e.g., "python dev" -> "Python Dev")
+                    normalized_tags = sorted(list({tag.strip().title() for tag in selected_tags if tag.strip()}))
+
+                    # 2. Add new tags to session state while keeping uniqueness
+                    for tag in normalized_tags:
                         if tag not in st.session_state.available_tags:
                             st.session_state.available_tags.append(tag)
+                    
+                    st.session_state.available_tags.sort()
 
-                    # Trigger your exact ingestion logic (extracts job_id & calls insert_job)
-                    ingest_urls(urls=clean_url, search_terms=selected_tags)
+                    # 3. Trigger ingestion with normalized search terms
+                    ingest_urls(urls=clean_url, search_terms=normalized_tags)
 
-                    st.success("Job offer queued! The scraper and analyzer will process it automatically.")
+                    st.success("✅ Job offer queued! Search terms normalized and added.")
 
                 except Exception as e:
                     st.error(f"Failed to ingest job offer: {e}")
