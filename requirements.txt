@@ -3,3 +3,4 @@ pydantic
 instructor
 litellm
 python-dotenv
+patchright

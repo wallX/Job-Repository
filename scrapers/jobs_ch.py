@@ -1,24 +1,28 @@
+from datetime import datetime 
 import re
 import sqlite3
 import time
 from pathlib import Path
-from playwright.sync_api import sync_playwright
-from db import get_unprocessed_jobs, update_job_details
+from urllib.parse import urlparse, urlunparse
+from patchright.sync_api import sync_playwright
 import sys
 import time
 import random
-from scrapers.base import BaseScraper
-import config
+
 
 # Add project root directory to sys.path
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
+
+from db import get_unprocessed_jobs, update_job_details
+from scrapers.base import BaseScraper
+import config
 
 DB_PATH = Path(config.DB_PATH)
 
 class JobsChScraper(BaseScraper):
-    source_name = "jobs_ch"
+    source_name = "jobs.ch"
 
     def can_handle_url(self, url: str) -> bool:
         return "jobs.ch" in url
@@ -73,9 +77,9 @@ def filter_jobs_by_terms(jobs: list, search_terms: list[str] | str) -> list:
 
 def run_detail_scraper():
     #from scrapers.old.auth_jobs_ch import get_latest_jwt
-    jobs = get_unprocessed_jobs("jobs.ch")
+    jobs = get_unprocessed_jobs("New", "jobs.ch")
     if not jobs:
-        print("No pending job descriptions to scrape.")
+        print("No pending 'New' job descriptions to scrape.")
         return
 
     print(f"Found {len(jobs)} jobs pending detail extraction.")
@@ -84,10 +88,34 @@ def run_detail_scraper():
 
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
+        browser = p.chromium.launch(
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--use-mock-keychain",
+                "--no-sandbox",
+            ],
+            proxy={
+                "server": "socks4://69.55.49.177:38182"
+               # "username": "my_username",
+               # "password": "my_password"
+            }
+        )
+
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080},
+            #device_scale_factor=1,
+            locale="en-US",
+            timezone_id="America/New_York",
+            permissions=["geolocation"],
+        )
+
         page = context.new_page()
 
+        page.goto('https://whatismyipaddress.com', wait_until="domcontentloaded", timeout=15000);
+        #time.sleep(120)
         for idx, job in enumerate(jobs, 1):
             job_id = job["job_id"]
             url = job["url"]
@@ -95,19 +123,29 @@ def run_detail_scraper():
             print(f"[{idx}/{len(jobs)}] Scraping details: {url}")
 
             try:
+                
                 page.goto(url, wait_until="domcontentloaded", timeout=15000)
             
                 # 1. Header Information
-                title = safe_extract_text(page, 'h2[data-cy="vacancy-title"]')
+                title = safe_extract_text(page, '[data-cy="vacancy-title"]')
                 company = safe_extract_text(page, 'a[data-cy="company-link"]')
                 logo_block = page.locator('div[data-cy="vacancy-logo"]')
+
+
                 company_image_url = safe_extract_attribute(logo_block, 'img', 'src')
+                parsed = urlparse(company_image_url)
+                clean_company_image_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+                
 
                 # 2. Structured Metadata
                 info_block = page.locator('div[data-cy="vacancy-info"]')
                 info_block.wait_for(timeout=5000)
                 
                 pub_date = safe_extract_text(info_block, 'li[data-cy="info-publication"]')
+                dt = datetime.strptime(pub_date, "%d %B %Y")
+                sqlite_date = dt.strftime("%Y-%m-%d")
+
+
                 workload = safe_extract_text(info_block, 'li[data-cy="info-workload"]')
                 contract = safe_extract_text(info_block, 'li[data-cy="info-contract"]')
                 #salary = safe_extract_text(info_block, 'li[data-cy="info-salary_estimate"]')
@@ -127,7 +165,8 @@ def run_detail_scraper():
                 # Pass straight to database module
                 update_job_details(
                     job_id,
-                    pub_date=pub_date,
+                    status="Scraped",
+                    pub_date=sqlite_date,
                     workload=workload,
                     contract=contract,
                     location=location,
@@ -137,9 +176,9 @@ def run_detail_scraper():
                     title=title,
                     company=company,
                     city=city,
-                    company_image_url=company_image_url
+                    company_image_url=clean_company_image_url
                 )
-                print(f"  Extracted job {job_id} ({len(clean_text)} chars), publication date: {pub_date}, workload: {workload}, contract: {contract}, location: {location}")
+                print(f"  Extracted job {job_id} ({len(clean_text)} chars), publication date: {sqlite_date}, workload: {workload}, contract: {contract}, location: {location}")
 
             except Exception as e:
                 print(f"  Failed to extract details for {job_id}: {e}")
@@ -149,8 +188,7 @@ def run_detail_scraper():
             print(f"  Waiting {jitter:.2f}s before next request...")
             time.sleep(jitter)
             #time.sleep(1000000)
-
-    browser.close()
+        browser.close()
 
 # Implement as a service
 def JobsChScraperService():

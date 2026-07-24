@@ -57,7 +57,8 @@ if __name__ == "__main__":
     
     # Example usage:
     links_to_add = [
-        "https://www.jobs.ch/en/vacancies/detail/24d79bae-a096-49b8-a91b-82faed52911f/"
+        "https://www.jobs.ch/en/vacancies/detail/24d79bae-a096-49b8-a91b-82faed52911f/",
+        "https://www.jobs.ch/en/vacancies/detail/436fd5ee-80f3-4687-8e04-02f9bcbfdbf3/"
     ]
     terms = ["python", "backend developer", "junior"]
 

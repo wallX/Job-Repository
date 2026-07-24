@@ -15,7 +15,7 @@ def init_db():
                 source TEXT NOT NULL,
                 url TEXT UNIQUE,
                 search_term TEXT DEFAULT NULL,
-                status TEXT DEFAULT 'new',
+                status TEXT DEFAULT 'New',
                 
                 -- Basic Metadata
                 title TEXT,
@@ -48,17 +48,19 @@ def init_db():
         """)
         conn.commit()
 
-def get_unprocessed_jobs(source: str = "jobs.ch"):
+def get_unprocessed_jobs(status: str, source: str) -> List[sqlite3.Row]:
     """Fetches records where full_description is NULL for the target source."""
     if not DB_PATH.exists():
         return []
+    if status not in ["New", "Scraped", "Processed"]:
+        raise ValueError("Invalid status. Must be 'New', 'Scraped', or 'Processed'.")
         
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT job_id, url, search_term FROM jobs WHERE full_description IS NULL AND source = ?", 
-            (source,)
+            "SELECT job_id, url, search_term FROM jobs WHERE full_description IS NULL AND source = ? AND status = ?", 
+            (source, status)
         )
         return cursor.fetchall()
 ########### LLM Evaluation Layer Functions ###########
@@ -70,7 +72,7 @@ def get_jobs_pending_llm(limit: int = 20) -> List[sqlite3.Row]:
         cursor.execute("""
             SELECT job_id, title, company, location, full_description 
             FROM jobs 
-            WHERE status = 'details_extracted' 
+            WHERE status = 'Scraped' 
               AND full_description IS NOT NULL 
               AND junior_score IS NULL
             LIMIT ?
@@ -108,6 +110,7 @@ def save_llm_evaluation(
 ########### Job Detail Update Functions ###########
 def update_job_details(
     job_id: str, 
+    status: str,
     pub_date: str = None, 
     workload: str = None, 
     contract: str = None, 
@@ -138,7 +141,8 @@ def update_job_details(
                 salary_estimate = COALESCE(:salary, salary_estimate),
                 full_description = COALESCE(:clean_text, full_description),
                 raw_description_html = COALESCE(:raw_html, raw_description_html),
-                status = 'details_extracted'
+                status = COALESCE(:status, status),
+                scraped_at = CURRENT_TIMESTAMP
             WHERE job_id = :job_id
         """, {
             "job_id": job_id,
@@ -152,7 +156,8 @@ def update_job_details(
             "city": city,
             "salary": salary,
             "clean_text": clean_text,
-            "raw_html": raw_html
+            "raw_html": raw_html,
+            "status": status
         })
         conn.commit()
 
@@ -198,7 +203,7 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
             terms_string = ", ".join(set(search_terms))
             cursor.execute("""
                 INSERT INTO jobs (job_id, source, url, search_term, status)
-                VALUES (?, ?, ?, ?, 'new')
+                VALUES (?, ?, ?, ?, 'New')
             """, (job_id, source, url, terms_string))
             conn.commit()
             return True  # Inserted new
