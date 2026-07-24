@@ -27,8 +27,8 @@ class JobsChScraper(BaseScraper):
     def can_handle_url(self, url: str) -> bool:
         return "jobs.ch" in url
 
-    def run(self) -> None:
-        JobsChScraperService()
+    def run(self, batch_size: int) -> None:
+        JobsChScraperService(batch_size=batch_size)
 
     def extract_job_id(self, url: str) -> str:
         """Extracts GUID from vacancy URLs like /en/vacancies/detail/24d79bae-.../"""
@@ -75,9 +75,9 @@ def filter_jobs_by_terms(jobs: list, search_terms: list[str] | str) -> list:
     return filtered
 
 
-def run_detail_scraper():
+def run_detail_scraper(batch: int):
     #from scrapers.old.auth_jobs_ch import get_latest_jwt
-    jobs = get_unprocessed_jobs("New", "jobs.ch")
+    jobs = get_unprocessed_jobs("New", "jobs.ch", limit=batch)
     if not jobs:
         print("No pending 'New' job descriptions to scrape.")
         return
@@ -191,8 +191,6 @@ def run_detail_scraper():
         browser.close()
 
 # Implement as a service
-def JobsChScraperService():
-    run_detail_scraper()
 
 if __name__ == "__main__":
-    JobsChScraperService()
+    run_detail_scraper()

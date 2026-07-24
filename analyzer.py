@@ -13,7 +13,7 @@ if str(ROOT_DIR) not in sys.path:
 from schemas import JobEvaluation
 from db import get_jobs_pending_llm, save_llm_evaluation
 
-client = instructor.from_litellm(litellm.completion)
+client = instructor.from_litellm(litellm.completion, mode=instructor.Mode.JSON)
 
 
 def load_prompts(system_path: str = "data/system.md", user_path: str = "data/user.md") -> tuple[str, str]:
@@ -88,6 +88,9 @@ def run_analysis_pipeline(batch_size: int = 10):
             # Format stack gap list into a clean comma-separated string for SQLite
             stack_gap_str = ", ".join(eval_result.stack_gap) if eval_result.stack_gap else "None"
 
+            #Format language_llm list into a clean comma-separated string for SQLite
+            language_llm_str = ", ".join(eval_result.language_llm) if eval_result.language_llm else "None"
+
             save_llm_evaluation(
                 job_id=job_id,
                 is_junior=eval_result.is_junior,
@@ -95,7 +98,7 @@ def run_analysis_pipeline(batch_size: int = 10):
                 stack_gap=stack_gap_str,
                 language_friction=eval_result.language_friction,
                 llm_summary=eval_result.llm_summary,
-                language_llm=eval_result.language_llm,
+                language_llm=language_llm_str,
                 language_llm_only_english=eval_result.language_llm_only_english,
                 work_model=eval_result.work_model,
                 required_yoe=eval_result.required_yoe,
@@ -106,6 +109,7 @@ def run_analysis_pipeline(batch_size: int = 10):
             print(f"  Stack Gap: {stack_gap_str}")
             print(f"  Language: {eval_result.language_friction}")
             print(f"  Summary: {eval_result.llm_summary}\n")
+
 
         except Exception as e:
             print(f"  Error processing job {job_id}: {e}\n")

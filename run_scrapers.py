@@ -4,7 +4,7 @@ import time
 from scrapers import SCRAPER_REGISTRY, get_all_scrapers, get_scraper_by_name
 from db import init_db
 
-def run_pipeline(target_sources: list[str] = None):
+def run_pipeline(batch_size: int = 10, target_sources: list[str] = None):
     # Ensure database schema exists before scraping
     init_db()
 
@@ -41,7 +41,7 @@ def run_pipeline(target_sources: list[str] = None):
 
     print(" All scrapers finished.")
 
-def main():
+def main(batch: int = 10):
     parser = argparse.ArgumentParser(description="Central Scraper Pipeline CLI")
     parser.add_argument(
         "--source", "-s",
@@ -49,10 +49,16 @@ def main():
         default=["all"],
         help=f"Specific scraper(s) to run (choices: {list(SCRAPER_REGISTRY.keys())} or 'all'). Default: 'all'"
     )
+    parser.add_argument(
+        "--batch", "-b",
+        type=int,
+        default=10,
+        help="Batch size for processing. Default: 10"
+    )
 
     args = parser.parse_args()
 
-    run_pipeline(target_sources=args.source)
+    run_pipeline(batch_size=args.batch, target_sources=args.source)
 
 if __name__ == "__main__":
     main()
