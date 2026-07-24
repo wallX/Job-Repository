@@ -8,7 +8,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 
-from run_scrapers import main  # Your existing pipeline function
+from scrapers.run_scrapers import main  # Your existing pipeline function
 
 class DetailScraperWorker(BaseWorker):
     def __init__(self):

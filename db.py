@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 from typing import List
+import pandas as pd
 
 from pydantic import json
 
@@ -293,6 +294,29 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
             conn.commit()
             return False  # Appended to existing
 
+########### UI Functions ###########
+def fetch_existing_tags() -> list[str]:
+    """Retrieves unique search terms for the tag dropdown."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT search_term FROM jobs WHERE search_term IS NOT NULL")
+        raw_rows = cursor.fetchall()
+        
+    tags = set()
+    for row in raw_rows:
+        if row[0]:
+            # Split comma-separated search terms stored in the DB
+            terms = [t.strip() for t in row[0].split(",") if t.strip()]
+            tags.update(terms)
+            
+    default_tags = ["Python", "Backend", "Fullstack", "Data Engineer", "Junior"]
+    return sorted(list(tags.union(default_tags)))
+
+
+def load_jobs_df() -> pd.DataFrame:
+    """Loads all jobs from SQLite into a DataFrame ordered by newest first."""
+    with get_connection() as conn:
+        return pd.read_sql("SELECT * FROM jobs ORDER BY added_at DESC", conn)
 
 
 if __name__ == "__main__":
