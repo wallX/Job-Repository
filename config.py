@@ -12,6 +12,7 @@ SYSTEM_PROMPT_PATH = BASE_DIR / "data" / "system.md"
 USER_PROMPT_PATH = BASE_DIR / "data" / "user.md"
 
 # LLM Configurations
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
+API_BASE = os.getenv("API_BASE", "http://localhost:11434")
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "ollama/llama3.2")
 LLM_TEMPERATURE = 0.1  # Low temperature for consistent JSON extraction
 MAX_TOKENS = 1500

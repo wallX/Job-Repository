@@ -45,6 +45,7 @@ def analyze_job(title: str, company: str, description: str) -> JobEvaluation:
 
     return client.chat.completions.create(
         model=config.DEFAULT_MODEL,
+        api_base=config.API_BASE,
         response_model=JobEvaluation,
         messages=[
             {"role": "system", "content": system_prompt},

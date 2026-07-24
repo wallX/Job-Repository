@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-class JobAnalysis(BaseModel):
+class JobEvaluation(BaseModel):
     title: str = Field(description="Job title extracted or cleaned from the post")
     company: str = Field(description="Name of the hiring company")
     location: str = Field(description="Full location string (e.g. '8001 Zürich / Hybrid')")

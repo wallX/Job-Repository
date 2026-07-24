@@ -5,10 +5,48 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama-srv
+    restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
       - ollama_storage:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  # Automates model pulling
+  ollama-model-puller:
+    image: curlimages/curl:latest
+    container_name: ollama-model-puller
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      echo 'Checking and pulling llama3.2 model...' &&
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' &&
+      echo 'Model pull complete!'
+      "
+    restart: "no" # Runs once on startup and exits safely
+
+  ollama-gpu:
+    image: ollama/ollama:latest
+    container_name: ollama-srv
+    profiles: ["gpu"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # 2. Playwright Scraper Service
   scraper:
@@ -29,8 +67,8 @@ services:
     depends_on:
       - ollama
     environment:
-      - DEFAULT_MODEL=ollama/llama3.1
-      - OLLAMA_HOST=http://ollama-srv:11434
+      - DEFAULT_MODEL=ollama/llama3.2
+      - API_BASE=http://ollama-srv:11434
     volumes:
       - ./data:/app/data   # Shared SQLite database mount
     command: python analyzer.py
