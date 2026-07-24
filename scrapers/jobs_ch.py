@@ -1,105 +1,138 @@
-import json
-import re
+import sqlite3
+import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from db import get_unprocessed_jobs, update_job_details
 import sys
+import time
+import random
+
+
 # Add project root directory to sys.path
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-RAW_DATA_PATH = Path("data/raw_jobs.jsonl")
+DB_PATH = Path("data/pipeline.db")
 
-def save_raw_payload(payload: dict):
-    """Appends payload to local JSONL staging file."""
-    RAW_DATA_PATH.parent.mkdir(exist_ok=True)
-    with open(RAW_DATA_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-def extract_job_id(url: str) -> str:
-    """Extracts GUID from vacancy URLs like /en/vacancies/detail/24d79bae-.../"""
-    match = re.search(r'/detail/([a-f0-9\-]+)/?', url)
-    return match.group(1) if match else str(hash(url))
+def safe_extract_text(parent_locator, selector: str) -> str | None:
+    elem = parent_locator.locator(selector)
+    if elem.count() > 0:
+        return elem.first.text_content().strip()
+    return None
 
-def save_db_payload(payload: dict):
-    """Inserts payload into SQLite database."""
-    from db import insert_job  # Import here to avoid circular dependency
-    insert_job(
-        job_id=payload["job_id"],
-        source=payload["source"],
-        title=payload["title"],
-        company=payload["company"],
-        location=payload.get("location", ""),
-        workload=payload.get("workload", ""),
-        contract_type=payload.get("contract_type", ""),
-        url=payload["url"]
-    )
+def safe_extract_attribute(parent_locator, selector: str, attribute: str) -> str | None:
+    """Safely extracts an attribute (e.g. 'src') from a selector."""
+    elem = parent_locator.locator(selector)
+    if elem.count() > 0:
+        val = elem.first.get_attribute(attribute)
+        return val.strip() if val else None
+    return None
 
-def run_scraper(search_term="python", max_pages=1):
+def extract_city_from_location(location_str: str | None) -> str | None:
+    if not location_str:
+        return None
+    primary = location_str.split('/')[0].split(',')[0].strip()
+    words = [w for w in primary.split() if not w.isdigit()]
+    return " ".join(words) if words else primary
+
+def filter_jobs_by_terms(jobs: list, search_terms: list[str] | str) -> list:
+    if search_terms == "all" or not search_terms:
+        return jobs
+
+    target_terms = [t.lower().strip() for t in search_terms] if isinstance(search_terms, list) else [search_terms.lower().strip()]
+    
+    filtered = []
+    for job in jobs:
+        job_terms = job["search_term"].lower() if job["search_term"] else ""
+        if any(term in job_terms for term in target_terms):
+            filtered.append(job)
+            
+    return filtered
+
+
+def run_detail_scraper():
+    #from scrapers.old.auth_jobs_ch import get_latest_jwt
+    jobs = get_unprocessed_jobs("jobs.ch")
+    if not jobs:
+        print("No pending job descriptions to scrape.")
+        return
+
+    print(f"Found {len(jobs)} jobs pending detail extraction.")
+
+    #jwt_token = get_latest_jwt()
+
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)  # Set to True for background execution
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
 
-        url = f"https://www.jobs.ch/en/jobs/?sort-by=date&term={search_term}"
-        print(f"Navigating to: {url}")
-        page.goto(url)
+        for idx, job in enumerate(jobs, 1):
+            job_id = job["job_id"]
+            url = job["url"]
 
-        current_page = 1
+            print(f"[{idx}/{len(jobs)}] Scraping details: {url}")
 
-        while current_page <= max_pages:
-            print(f"\n--- Scraping Page {current_page} ---")
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=15000)
             
-            # Wait until the job list renders
-            page.wait_for_selector('div[aria-label="Job list"]')
-            
-            # Select ONLY valid job items (ignores survey/ad cards)
-            items = page.locator('div[data-cy="serp-item"]').all()
-            print(f"Found {len(items)} jobs on this page.")
+                # 1. Header Information
+                title = safe_extract_text(page, 'h2[data-cy="vacancy-title"]')
+                company = safe_extract_text(page, 'a[data-cy="company-link"]')
+                logo_block = page.locator('div[data-cy="vacancy-logo"]')
+                company_image_url = safe_extract_attribute(logo_block, 'img', 'src')
 
-            for item in items:
-                link_elem = item.locator('a[data-cy="job-link"]').first
-                href = link_elem.get_attribute("href") or ""
-                title = link_elem.get_attribute("title") or ""
+                # 2. Structured Metadata
+                info_block = page.locator('div[data-cy="vacancy-info"]')
+                info_block.wait_for(timeout=5000)
                 
-                # Extract paragraph metadata (Place of work, Workload, Contract type)
-                paragraphs = item.locator("p.textStyle_caption1").all_text_contents()
-                clean_paragraphs = [
-                                    p.strip() for p in paragraphs 
-                                    if p.strip() and "Is this job relevant to you?" not in p
-                                ]
-                
-                # The company name sits in a bold paragraph at the bottom of the card
-                company = item.locator("p.fw_bold").text_content() or "Unknown"
+                pub_date = safe_extract_text(info_block, 'li[data-cy="info-publication"]')
+                workload = safe_extract_text(info_block, 'li[data-cy="info-workload"]')
+                contract = safe_extract_text(info_block, 'li[data-cy="info-contract"]')
+                #salary = safe_extract_text(info_block, 'li[data-cy="info-salary_estimate"]')
 
-                job_url = f"https://www.jobs.ch{href}" if href.startswith("/") else href
-                job_id = extract_job_id(href)
+                # Extract Location dynamically (It's the <li> without a dedicated data-cy attribute)
+                loc_elem = info_block.locator('li:not([data-cy])')
+                location = loc_elem.first.text_content().strip() if loc_elem.count() > 0 else None
 
-                raw_payload = {
-                    "job_id": job_id,
-                    "source": "jobs.ch",
-                    "title": title.strip(),
-                    "company": company.strip(),
-                    "url": job_url,
-                    "raw_meta_paragraphs": clean_paragraphs,
-                   #"raw_html": item.inner_html()
-                }
+                city = extract_city_from_location(location)
 
-                #save_raw_payload(raw_payload)
-                save_db_payload(raw_payload)
-                print(f"  Saved: {title.strip()} @ {company.strip()}")
+                # Extract Main Description Body
+                desc_locator = page.locator('div[data-cy="vacancy-description"]')
+                clean_text = desc_locator.inner_text().strip()
+                raw_html = desc_locator.inner_html().strip()
 
-            # Pagination handling
-            next_button = page.locator('a[data-cy="paginator-next"]')
-            if next_button.count() > 0 and current_page < max_pages:
-                current_page += 1
-                next_button.click()
-                page.wait_for_timeout(2000)  # Brief wait for AJAX list refresh
-            else:
-                print("\nReached the end of available pages.")
-                break
+                # Save directly to SQLite
+                # Pass straight to database module
+                update_job_details(
+                    job_id,
+                    pub_date=pub_date,
+                    workload=workload,
+                    contract=contract,
+                    location=location,
+                    salary=None,
+                    clean_text=clean_text,
+                    raw_html=raw_html,
+                    title=title,
+                    company=company,
+                    city=city,
+                    company_image_url=company_image_url
+                )
+                print(f"  Extracted job {job_id} ({len(clean_text)} chars), publication date: {pub_date}, workload: {workload}, contract: {contract}, location: {location}")
 
-        browser.close()
+            except Exception as e:
+                print(f"  Failed to extract details for {job_id}: {e}")
+
+            # Polite anti-bot delay
+            jitter = random.uniform(2.3, 5.1)
+            print(f"  Waiting {jitter:.2f}s before next request...")
+            time.sleep(jitter)
+            #time.sleep(1000000)
+
+    browser.close()
+
 
 if __name__ == "__main__":
-    run_scraper(search_term="python", max_pages=1)
+    run_detail_scraper()
