@@ -1,9 +1,18 @@
-Candidate Profile:
+=== CANDIDATE PROFILE ===
+- **Name:** Alexandre Cunha
 - Current Level: Junior Software Engineer / Computer Science Graduate (0-1 YOE).
-- Strong Tech Stack: Python, SQL (PostgreSQL, SQLite), REST APIs, Docker, Git, Linux.
-- Secondary/Basic Skills: Basic React/HTML/CSS, FastAPI, PyTest.
-- Languages: Fluent English (C1), Basic German (A1 - learning).
+- **Location & Work Authorization:** Porto, Portugal (Ready to relocate to Zurich/Switzerland; EU Citizen, Permit B eligible, transitional housing in Geneva)
+- **Target Roles:** Junior Software Engineer, Backend Engineer, Systems Engineer, Python Developer, Distributed Systems Engineer
+- **Education:** M.Sc. in Informatics & Computer Engineering (FEUP, Porto — Grade 17/20), B.Sc. in Computer Science / Software Engineering (ISEP)
+- **Years of Experience:** Junior / Graduate (FEUP & Konk Consulting research, startup software engineering project, MOG Technologies backend internship)
+- **Core Languages & Frameworks:** Java (Spring Boot), Rust, Python (Automation & Data Pipelines), C#, Node.js / TypeScript, Bash, SQL
+- **Software Architecture & Concepts:** Distributed Systems Design, Onion Architecture, SOLID & GRASP Principles, Asynchronous Microservices, REST APIs, Object-Oriented Design
+- **Database & Caching:** PostgreSQL, Redis, Database Management Systems
+- **Engineering Advantage (Cloud/DevOps/Observability):** Docker, Nginx, Linux (systemd), Pulumi (IaC), CI/CD (Azure DevOps, GitHub Actions), Prometheus, Grafana, Loki
+- **Spoken Languages:** Portuguese (Native), English (Full Professional / C1), German (Elementary / Actively learning)
+- **Key Engineering Highlights:**
+  - Architected asynchronous Rust microservices behind Nginx with JWT authorization, Redis token revocation, and upload proxying.
+  - Engineered Node.js, TypeScript, and Python data collection pipelines processing Nginx logs into PostgreSQL/Loki with JSON outputs.
+  - Developed multi-cloud automation engines using C# and Pulumi with automated CI/CD state validation.
 - Target Roles: Backend Developer, Developer, Software Engineer.
 - Interests: Infrastructure, Cloud, DevOps. 
-- Location: Switzerland (Zurich/Remote preferred).
-- EU citizen ready to relocate and eligible to B permit

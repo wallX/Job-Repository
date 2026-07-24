@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
-from typing import List
 import pandas as pd
+from typing import List, Dict
 
 from pydantic import json
 
@@ -90,6 +90,17 @@ def init_db():
                 cursor.execute(alter_sql)
                 print(f"Added missing column '{col_name}' to jobs table.")
 
+        # 4. Create job_chat_history table for AI Assistant chats
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
 
 def get_unprocessed_jobs(status: str, source: str, limit: int = None) -> List[sqlite3.Row]:
@@ -331,7 +342,7 @@ def load_jobs_df() -> pd.DataFrame:
     with get_connection() as conn:
         return pd.read_sql("SELECT * FROM jobs ORDER BY added_at DESC", conn)
 
-# db.py
+
 
 def update_job_application_data(job_id: str, application_status: str, application_notes: str = None) -> bool:
     """Updates application status and notes for a specific job."""
@@ -346,6 +357,37 @@ def update_job_application_data(job_id: str, application_status: str, applicatio
         conn.commit()
         return True
 
+
+########### Persistent Job Chat Functions ###########
+def load_chat_history(job_id: str) -> List[Dict[str, str]]:
+    """Loads chat messages for a specific job_id in chronological order."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT role, content FROM job_chat_history WHERE job_id = ? ORDER BY id ASC", 
+            (str(job_id),)
+        )
+        rows = cursor.fetchall()
+        return [{"role": row[0], "content": row[1]} for row in rows]
+
+
+def save_chat_message(job_id: str, role: str, content: str):
+    """Saves a single chat message (user or assistant) for a job offer."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO job_chat_history (job_id, role, content) VALUES (?, ?, ?)",
+            (str(job_id), role, content)
+        )
+        conn.commit()
+
+
+def clear_chat_history(job_id: str):
+    """Clears all stored chat messages for a specific job offer."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM job_chat_history WHERE job_id = ?", (str(job_id),))
+        conn.commit()
 
 if __name__ == "__main__":
     init_db()

@@ -3,6 +3,8 @@ import pandas as pd
 import streamlit as st
 from urllib.parse import urlparse
 import unicodedata
+import json
+from litellm import completion
 
 import sys
 from pathlib import Path
@@ -11,6 +13,54 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 import db
+import config
+
+
+def load_text_file(file_path) -> str:
+    """Reads content from a file path."""
+    p = Path(file_path)
+    if p.exists():
+        return p.read_text(encoding="utf-8")
+    return ""
+
+def build_chat_messages(job: pd.Series, history: list[dict], user_input: str) -> list[dict]:
+    """
+    Constructs the message payload using CHAT_SYSTEM_PROMPT_PATH and USER_PROMPT_PATH.
+    Injects the raw job database dictionary directly as context.
+    """
+    # 1. Load prompts from config paths
+    system_prompt_template = load_text_file(config.CHAT_SYSTEM_PROMPT_PATH)
+    user_prompt_template = load_text_file(config.USER_PROMPT_PATH)
+
+    # 2. Convert entire database row to raw JSON/dict context
+    # Drop raw heavy HTML to keep context clean while keeping all extracted fields
+    job_data_dict = job.to_dict()
+    job_data_dict.pop("raw_description_html", None)
+    
+    # Format raw query output cleanly for LLM consumption
+    raw_job_db_output = json.dumps(job_data_dict, indent=2, default=str)
+
+    # 3. Assemble system prompt with direct DB query output
+    system_content = f"{system_prompt_template}\n\n=== RAW JOB RECORD FROM DATABASE ===\n{raw_job_db_output}"
+
+    # 4. Assemble messages list
+    messages = [{"role": "system", "content": system_content}]
+
+    # Append past conversation turns stored in SQLite
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"]})
+
+    # Append current user prompt wrapped in template context if needed
+    formatted_user_input = (
+        f"{user_prompt_template}\n\nCandidate Question: {user_input}"
+        if user_prompt_template.strip()
+        else user_input
+    )
+    messages.append({"role": "user", "content": formatted_user_input})
+
+    #print(messages)  # Debugging: Print the constructed messages for verification
+
+    return messages
 
 
 def normalize_text(text: str) -> str:
@@ -67,7 +117,7 @@ def on_status_change(job_id: str, selectbox_key: str):
 
 @st.dialog("Full Job Details & Application Notes", width="large")
 def show_job_details_dialog(job: pd.Series):
-    """Modal details view with application status dropdown, notes, and LLM foreign-friendliness metrics."""
+    """Modal details view with application status dropdown, notes, LLM chat, and job metrics."""
     job_id = str(job.get("job_id"))
     title = job.get("title") or "Untitled Job"
     company = job.get("company") or "Unknown Company"
@@ -79,7 +129,6 @@ def show_job_details_dialog(job: pd.Series):
     if current_status not in STATUS_OPTIONS:
         current_status = "Not Applied"
 
-    # Use numeric ratios: tight space for button & badge, remaining space absorbed by spacer
     col_link, col_badge, _ = st.columns([1.2, 1, 8], vertical_alignment="center")
     
     with col_link:
@@ -123,6 +172,73 @@ def show_job_details_dialog(job: pd.Series):
 
     st.divider()
 
+    # =========================================================
+    # 💬 AI ASSISTANT CHAT (ADDED HERE)
+    # =========================================================
+    with st.expander("💬 AI Assistant (Job Chat)", expanded=True):
+        col_chat_title, col_chat_clear = st.columns([4, 1], vertical_alignment="center")
+        with col_chat_title:
+            st.caption("Ask questions about fit, request cover letter points, or practice interview questions.")
+        with col_chat_clear:
+            if st.button("🗑️ Clear", key=f"clear_chat_{job_id}", use_container_width=True):
+                db.clear_chat_history(job_id)
+                st.toast("Chat history cleared.")
+                st.rerun()
+
+        # Load chat history from SQLite
+        history = db.load_chat_history(job_id)
+
+        chat_container = st.container(height=300)
+
+        with chat_container:
+            if not history:
+                st.info("👋 Ask me anything about this job offer or how to tailor your application!")
+            else:
+                for msg in history:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+
+        # Chat Input Box
+        if user_input := st.chat_input("Ask about fit, interview questions, or cover letters...", key=f"chat_input_{job_id}"):
+            # 1. Display user input & persist to DB
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(user_input)
+            db.save_chat_message(job_id, "user", user_input)
+
+            # 2. Build LiteLLM message payload using config files & direct DB query dump
+            messages = build_chat_messages(job, history, user_input)
+
+            # 3. Stream response via LiteLLM
+            with chat_container:
+                with st.chat_message("assistant"):
+                    response_placeholder = st.empty()
+                    full_response = ""
+
+                    try:
+                        response_stream = completion(
+                            model=config.DEFAULT_MODEL,
+                            api_base=config.API_BASE,
+                            messages=messages,
+                            temperature=config.LLM_TEMPERATURE,
+                            stream=True
+                        )
+
+                        for chunk in response_stream:
+                            if chunk.choices and chunk.choices[0].delta.content:
+                                full_response += chunk.choices[0].delta.content
+                                response_placeholder.markdown(full_response + "▌")
+                        
+                        response_placeholder.markdown(full_response)
+                        
+                        # 4. Save Assistant response to SQLite
+                        db.save_chat_message(job_id, "assistant", full_response)
+
+                    except Exception as e:
+                        st.error(f"Error executing LiteLLM chat completion: {e}")
+
+    st.divider()
+
     # --- METRICS GRID ---
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Pipeline Status", str(job.get("status", "N/A")))
@@ -139,7 +255,7 @@ def show_job_details_dialog(job: pd.Series):
     
     ff_reasons = job.get("foreign_friendly_reasons")
     if pd.notna(ff_reasons) and str(ff_reasons).strip():
-        st.info(f"**Foreign Friendliness Assessment:**\n{ff_reasons}")
+        st.info(f"{ff_reasons}")
     else:
         st.caption("No foreign friendliness evaluation recorded.")
 

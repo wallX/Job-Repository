@@ -51,7 +51,13 @@ def analyze_job(title: str, company: str, description: str) -> JobEvaluation:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
         ],
-        temperature=config.LLM_TEMPERATURE  # Low temperature for deterministic scoring
+        response_format={
+            "type": "json_object",
+            "schema": JobEvaluation.model_json_schema(),
+            "strict": True
+        },
+        temperature=config.LLM_TEMPERATURE,  # Low temperature for deterministic scoring
+        extra_body={"num_ctx": 16384}
     )
 
 

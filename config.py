@@ -9,6 +9,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "data" / "pipeline.db"
 SYSTEM_PROMPT_PATH = BASE_DIR / "data" / "system.md"
+CHAT_SYSTEM_PROMPT_PATH = BASE_DIR / "data" / "chat_system.md"
 USER_PROMPT_PATH = BASE_DIR / "data" / "user.md"
 
 # LLM Configurations
