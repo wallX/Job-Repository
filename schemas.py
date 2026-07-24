@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 class JobAnalysis(BaseModel):
@@ -9,17 +11,23 @@ class JobAnalysis(BaseModel):
     contract_type: str = Field(description="Contract type (e.g. 'Permanent position', 'Temporary')")
     
     is_junior: bool = Field(
-        description="True if suitable for early-career/junior developers (0-2 years exp)"
+        description="True if suitable for early-career/junior developers (0-2 YOE or explicit junior/intern titles). False if senior, lead, or >3 YOE required."
     )
     junior_score: float = Field(
-        description="Rating from 0.0 (Senior/Lead only) to 10.0 (Ideal Junior position)"
+        ge=0.0,
+        le=10.0,
+        description="Overall suitability score from 0.0 (Unsuitable / Senior) to 10.0 (Perfect Junior Match)."
     )
-    stack_gap: str = Field(
-        description="Key technologies required by the role that the candidate lacks"
+    stack_gap: List[str] = Field(
+        description="List of technologies, frameworks, or tools required by the job that the candidate lacks or needs to learn."
     )
     language_friction: str = Field(
-        description="Required languages (e.g., 'German B2 required', 'English only')"
+        description="Assessment of language requirements (e.g., 'None: English adequate', 'High: Native German C1 required', 'Medium: French B2')."
     )
     llm_summary: str = Field(
-        description="A concise 2-sentence summary of why this job is or isn't a good fit"
+        description="A concise 2-sentence summary explaining the key reasons for the score and any dealbreakers."
+    )
+    required_yoe: Optional[int] = Field(
+        default=None,
+        description="Explicit years of experience required (e.g. 3), or None if unspecified."
     )

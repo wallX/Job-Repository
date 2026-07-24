@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from typing import List
 
 DB_PATH = Path("data/pipeline.db")
 
@@ -52,7 +53,51 @@ def get_unprocessed_jobs(source: str = "jobs.ch"):
             (source,)
         )
         return cursor.fetchall()
+########### LLM Evaluation Layer Functions ###########
+def get_jobs_pending_llm(limit: int = 20) -> List[sqlite3.Row]:
+    """Fetches jobs where details were extracted but LLM analysis hasn't run yet."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT job_id, title, company, location, full_description 
+            FROM jobs 
+            WHERE status = 'details_extracted' 
+              AND full_description IS NOT NULL 
+              AND junior_score IS NULL
+            LIMIT ?
+        """, (limit,))
+        return cursor.fetchall()
 
+def save_llm_evaluation(
+    job_id: str,
+    is_junior: bool,
+    junior_score: float,
+    stack_gap: str,
+    language_friction: str,
+    llm_summary: str
+):
+    """Updates SQLite with the structured evaluation result from the LLM."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            UPDATE jobs 
+            SET is_junior = :is_junior,
+                junior_score = :junior_score,
+                stack_gap = :stack_gap,
+                language_friction = :language_friction,
+                llm_summary = :llm_summary,
+                status = 'evaluated'
+            WHERE job_id = :job_id
+        """, {
+            "job_id": job_id,
+            "is_junior": 1 if is_junior else 0,
+            "junior_score": junior_score,
+            "stack_gap": stack_gap,
+            "language_friction": language_friction,
+            "llm_summary": llm_summary
+        })
+        conn.commit()
+########### Job Detail Update Functions ###########
 def update_job_details(
     job_id: str, 
     pub_date: str = None, 
@@ -125,6 +170,8 @@ def insert_job(job_id: str, source: str, title: str, company: str,
             search_term
         ))
         conn.commit()
+
+
 
 
 if __name__ == "__main__":
