@@ -1,3 +1,5 @@
+import sys
+from pathlib import Path
 from base_worker import BaseWorker
 
 # Add project root directory to sys.path

@@ -8,7 +8,7 @@ class BaseScraper(ABC):
         pass
 
     @abstractmethod
-    def run(self) -> None:
+    def run(self, batch_size: int) -> None:
         """Primary execution method for running the scraper."""
         pass
 

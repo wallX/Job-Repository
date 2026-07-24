@@ -3,3 +3,5 @@ Simple Page that can load offers from the database as a list, and open each offe
 Allow to add personal comments and set manual user status, for example (applied, rejected, ghosted)
 
 And a prompt for using with the LLM
+
+Create simple interface with a POST to add a new job opportunity  

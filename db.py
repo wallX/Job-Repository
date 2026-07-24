@@ -94,12 +94,14 @@ def get_unprocessed_jobs(status: str, source: str, limit: int = None) -> List[sq
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT job_id, url, search_term FROM jobs WHERE full_description IS NULL AND source = ? AND status = ?", 
-            (source, status)
-        )
+        sql = "SELECT job_id, url, search_term FROM jobs WHERE full_description IS NULL AND source = ? AND status = ?"
+        params = [source, status]
+
         if limit is not None:
-            cursor.execute("LIMIT ?", (limit,))
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        cursor.execute(sql, params)
         return cursor.fetchall()
 ########### LLM Evaluation Layer Functions ###########
 def get_jobs_pending_llm(limit: int = 20) -> List[sqlite3.Row]:

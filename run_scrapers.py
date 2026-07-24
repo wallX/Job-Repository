@@ -33,7 +33,7 @@ def run_pipeline(batch_size: int = 10, target_sources: list[str] = None):
         
         start_time = time.time()
         try:
-            scraper.run()
+            scraper.run(batch_size=batch_size)
             duration = time.time() - start_time
             print(f" Completed '{scraper.source_name}' in {duration:.1f}s\n")
         except Exception as e:
