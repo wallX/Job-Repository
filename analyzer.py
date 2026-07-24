@@ -105,6 +105,8 @@ def run_analysis_pipeline(batch_size: int = 10):
                 language_llm_only_english=eval_result.language_llm_only_english,
                 work_model=eval_result.work_model,
                 required_yoe=eval_result.required_yoe,
+                foreign_friendly_score=eval_result.foreign_friendly_score,
+                foreign_friendly_reasons=eval_result.foreign_friendly_reasons,
                 llm_tags=llm_tags_str,
                 status="Processed"
             )

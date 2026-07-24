@@ -51,6 +51,8 @@ def init_db():
         "language_friction": "TEXT DEFAULT NULL",
         "language_llm": "TEXT DEFAULT NULL",
         "language_llm_only_english": "INTEGER DEFAULT NULL",
+        "foreign_friendly_score": "REAL DEFAULT NULL",
+        "foreign_friendly_reasons": "TEXT DEFAULT NULL",
         "work_model": "TEXT DEFAULT NULL",
         "required_yoe": "INTEGER DEFAULT NULL",
         "llm_tags": "TEXT DEFAULT NULL",
@@ -137,6 +139,8 @@ def save_llm_evaluation(
     required_yoe: int,
     llm_summary: str,
     llm_tags: str,
+    foreign_friendly_score: float,
+    foreign_friendly_reasons: str,
     status: str = "Processed"
 ):
     """Updates SQLite with the structured evaluation result from the LLM."""
@@ -153,6 +157,8 @@ def save_llm_evaluation(
                 language_llm_only_english = :language_llm_only_english,
                 work_model = :work_model,
                 required_yoe = :required_yoe,
+                foreign_friendly_score = :foreign_friendly_score,
+                foreign_friendly_reasons = :foreign_friendly_reasons,
                 status = :status
             WHERE job_id = :job_id
         """, {
@@ -167,6 +173,8 @@ def save_llm_evaluation(
             "work_model": work_model,
             "required_yoe": required_yoe,
             "llm_tags": llm_tags,
+            "foreign_friendly_score": foreign_friendly_score,
+            "foreign_friendly_reasons": foreign_friendly_reasons,
             "status": status
         })
         conn.commit()

@@ -33,6 +33,16 @@ class JobEvaluation(BaseModel):
         description="List of tags or keywords extracted by the LLM from the job description, highlighting key skills, technologies, or requirements mentioned in the posting."
     )
 
+    foreign_friendly_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Score from 0.0 (Not foreign-friendly) to 10.0 (Highly foreign-friendly) indicating how welcoming the job is to international applicants, based on language requirements, visa sponsorship, and cultural inclusivity."
+    )
+
+    foreign_friendly_reasons: str = Field(
+        description="Reasons for the foreign-friendly score, including details about language requirements, visa sponsorship, and cultural inclusivity. include the following structure: 'Language Requirements: ...; Visa Sponsorship: ...; Cultural Inclusivity: ...'. If the job is not foreign-friendly, provide specific reasons why. And if they include any mention about international applicants paraphrase it or quote it."
+    )
+
     llm_summary: str = Field(
         description="If description is not in English make the full translation and at the end a concise summary in English. Include any notable details about the role, company, or required skills and requirements, responsibilities, expectations as interpreted by the LLM."
     )

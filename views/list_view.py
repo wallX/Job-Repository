@@ -12,13 +12,14 @@ if str(ROOT_DIR) not in sys.path:
 import db
 
 # Status options and associated color mappings
-STATUS_OPTIONS = ["Not Applied", "Applied", "Rejected", "Ghosted", "Accepted"]
+STATUS_OPTIONS = ["Not Applied", "Applied", "Rejected", "Ghosted", "Interviewing", "Accepted"]
 
 STATUS_COLORS = {
     "Not Applied": {"bg": "#e2e8f0", "text": "#475569", "border": "#cbd5e1"}, # Gray
     "Applied":     {"bg": "#ffedd5", "text": "#c2410c", "border": "#fdba74"}, # Orange
     "Rejected":    {"bg": "#fee2e2", "text": "#b91c1c", "border": "#fca5a5"}, # Red
     "Ghosted":     {"bg": "#f3e8ff", "text": "#6b21a8", "border": "#d8b4fe"}, # Purple
+    "Interviewing": {"bg": "#e0f2fe", "text": "#0369a1", "border": "#7dd3fc"}, # Blue
     "Accepted":    {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
 }
 def render_status_badge_html(status: str) -> str:
@@ -306,7 +307,7 @@ def render_list_view():
 
     st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers")
 
-    print(f"table header: {list(filtered_df.columns)}")
+   # print(f"table header: {list(filtered_df.columns)}")
 
     # =========================================================
     # 🎴 CARDS LISTING

@@ -6,3 +6,4 @@ Candidate Profile:
 - Target Roles: Backend Developer, Developer, Software Engineer.
 - Interests: Infrastructure, Cloud, DevOps. 
 - Location: Switzerland (Zurich/Remote preferred).
+- EU citizen ready to relocate and eligible to B permit

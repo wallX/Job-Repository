@@ -1,6 +1,7 @@
 __pycache__/
 **/*.db
 **/*.jsonl
-
+**/*.db-shm
+**/*.db-wal
 
 **/.DS_Store
