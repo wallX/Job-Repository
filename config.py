@@ -14,6 +14,8 @@ USER_PROMPT_PATH = BASE_DIR / "data" / "user.md"
 
 # LLM Configurations
 API_BASE = os.getenv("API_BASE", "http://localhost:11434")
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "ollama/llama3.2")
+DEFAULT_ANALYSIS_MODEL = os.getenv("DEFAULT_ANALYSIS_MODEL", "ollama/qwen2.5:14b")
+DEFAULT_CONVERSATION_MODEL = os.getenv("DEFAULT_CONVERSATION_MODEL", "ollama/qwen2.5:7b")
+KEEP_ALIVE = int(os.getenv("KEEP_ALIVE", 0))
 LLM_TEMPERATURE = 0.1  # Low temperature for consistent JSON extraction
 MAX_TOKENS = 1500

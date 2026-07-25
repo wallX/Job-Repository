@@ -44,7 +44,7 @@ def analyze_job(title: str, company: str, description: str) -> JobEvaluation:
     user_content = f"{user_template}\n\n--- Job Posting ---\nTitle: {title}\nCompany: {company}\n\nDescription:\n{description[:4000]}"
 
     return client.chat.completions.create(
-        model=config.DEFAULT_MODEL,
+        model=config.DEFAULT_ANALYSIS_MODEL,
         api_base=config.API_BASE,
         response_model=JobEvaluation,
         messages=[
@@ -57,7 +57,7 @@ def analyze_job(title: str, company: str, description: str) -> JobEvaluation:
             "strict": True
         },
         temperature=config.LLM_TEMPERATURE,  # Low temperature for deterministic scoring
-        extra_body={"num_ctx": 16384}
+        extra_body={"num_ctx": 16384, "keep_alive": config.KEEP_ALIVE}  # Ensure context window is sufficient for long job descriptions
     )
 
 
@@ -78,7 +78,7 @@ def run_analysis_pipeline(batch_size: int = 10):
             raise ValueError("System and user prompts must be provided for LLM evaluation.")
         raise ValueError("System and user prompts path must be provided for LLM evaluation.")
 
-    print(f"Starting LLM Analysis for {len(jobs)} jobs using {config.DEFAULT_MODEL}...\n")
+    print(f"Starting LLM Analysis for {len(jobs)} jobs using {config.DEFAULT_ANALYSIS_MODEL}...\n")
 
     for idx, job in enumerate(jobs, 1):
         job_id = job["job_id"]

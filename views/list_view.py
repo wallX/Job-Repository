@@ -217,13 +217,14 @@ def show_job_details_dialog(job: pd.Series):
 
                     try:
                         response_stream = completion(
-                            model=config.DEFAULT_MODEL,
+                            model=config.DEFAULT_CONVERSATION_MODEL,
                             api_base=config.API_BASE,
                             messages=messages,
                             temperature=config.LLM_TEMPERATURE,
-                            stream=True
+                            stream=True,
+                            extra_body={"keep_alive": config.KEEP_ALIVE} 
                         )
-
+                        
                         for chunk in response_stream:
                             if chunk.choices and chunk.choices[0].delta.content:
                                 full_response += chunk.choices[0].delta.content
