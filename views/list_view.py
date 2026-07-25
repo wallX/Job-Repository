@@ -425,7 +425,7 @@ def render_job_card(job: pd.Series):
         c8.markdown(f"📅 **Published:**\n{pub_date} *({language})*")
 
 def render_list_view():
-    """Renders job offers as visual cards with sidebar filtering."""
+    """Renders job offers as visual cards with sidebar filtering and sorting."""
     
     df = db.load_jobs_df()
 
@@ -435,7 +435,7 @@ def render_list_view():
         return
 
     # =========================================================
-    # 👈 SIDEBAR FILTER NAVIGATION
+    # 👈 SIDEBAR FILTER & SORT NAVIGATION
     # =========================================================
     st.sidebar.header("🔍 Filter Job Offers")
 
@@ -457,7 +457,6 @@ def render_list_view():
     # 3. Dynamic Location Filter
     all_locations = set()
     for row in df["location"].fillna(df["city"]).dropna():
-        # Split on commas or slashes if multiple locations exist in one string
         for loc in str(row).split(","):
             cleaned = loc.strip()
             if cleaned and cleaned.lower() != "n/a":
@@ -480,14 +479,57 @@ def render_list_view():
         key="sidebar_terms"
     )
 
-    # 5. Checkbox Filters (Junior & Foreign Friendly)
+    # =========================================================
+    # 🔀 SORTING CONTROLS (PLACED ABOVE CHECKBOXES)
+    # =========================================================
+    st.sidebar.divider()
+    st.sidebar.header("🔀 Sort Offers")
+
+    SORT_OPTIONS = {
+        "Job Title": "title",  # <--- Default Selection
+        "Publication Date": "publication_date",
+        "Date Added": "added_at",
+        "Junior Score": "junior_score",
+        "Foreign Friendly Score": "foreign_friendly_score",
+        "Required YOE": "required_yoe",
+        "Company Name": "company",
+    }
+
+    available_sort_options = {
+        label: col for label, col in SORT_OPTIONS.items() if col in df.columns
+    }
+
+    sort_labels = list(available_sort_options.keys())
+    default_index = sort_labels.index("Job Title") if "Job Title" in sort_labels else 0
+
+    col_sort_field, col_sort_order = st.sidebar.columns([2, 1], vertical_alignment="bottom")
+
+    with col_sort_field:
+        selected_sort_label = st.selectbox(
+            "Sort By", 
+            options=sort_labels,
+            index=default_index,  # Default: Job Title
+            key="sidebar_sort_by"
+        )
+
+    with col_sort_order:
+        sort_order = st.radio(
+            "Order", 
+            options=["Asc", "Desc"],
+            index=0,  # Default: Ascending (A-Z)
+            key="sidebar_sort_order"
+        )
+
+    # =========================================================
+    # 👶/🌍 CHECKBOX FILTERS (PLACED BELOW SORTING)
+    # =========================================================
     st.sidebar.divider()
     col_j, col_ff = st.sidebar.columns(2)
+
     with col_j:
         junior_only = st.checkbox("👶 Junior Only", value=False, key="sidebar_junior")
     with col_ff:
         foreign_only = st.checkbox("🌍 Foreign Friendly", value=False, key="sidebar_foreign")
-
 
     # =========================================================
     # 🎯 APPLY FILTERS
@@ -525,14 +567,13 @@ def render_list_view():
         filtered_df = filtered_df[filtered_df["search_term"].astype(str).str.contains(term_pattern, case=False, na=False)]
 
     if search_query:
-        # Split search query into normalized individual tokens (words)
         query_tokens = normalize_text(search_query).split()
 
         if query_tokens:
             def matches_query(row: pd.Series) -> bool:
-                # Combine all searchable fields into a single text blob
                 fields_to_search = [
                     row.get("job_id"),
+                    row.get("source"),
                     row.get("title"),
                     row.get("company"),
                     row.get("location"),
@@ -543,22 +584,30 @@ def render_list_view():
                     row.get("search_term"),
                     row.get("llm_tags")
                 ]
-                
-                # Normalize the combined searchable text for this job offer
                 searchable_text = normalize_text(" ".join([str(f) for f in fields_to_search if pd.notna(f)]))
-                
-                # Ensure ALL query tokens appear in the searchable text (order-independent)
                 return all(token in searchable_text for token in query_tokens)
 
-            # Apply fuzzy matching across all rows
             filtered_df = filtered_df[filtered_df.apply(matches_query, axis=1)]
 
+    # =========================================================
+    # 🔀 APPLY SORTING
+    # =========================================================
+    sort_column = available_sort_options.get(selected_sort_label)
+
+    if sort_column and sort_column in filtered_df.columns:
+        is_ascending = (sort_order == "Asc")
+        
+        filtered_df = filtered_df.sort_values(
+            by=sort_column, 
+            ascending=is_ascending, 
+            na_position="last"
+        )
 
     # =========================================================
     # 🎴 CARDS LISTING MAIN VIEW
     # =========================================================
     st.subheader("All Job Offers")
-    st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers")
+    st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers (Sorted by **{selected_sort_label} [{sort_order}]**)")
 
     for idx, job in filtered_df.iterrows():
         render_job_card(job)
