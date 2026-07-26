@@ -356,7 +356,7 @@ def show_job_details_dialog(job: pd.Series):
  
     ff_reasons = job.get("foreign_friendly_reasons")
     if pd.notna(ff_reasons) and str(ff_reasons).strip():
-        st.info(f"**Foreign Friendliness:**{ff_reasons}")
+        st.info(f"**Foreign Friendliness:** {ff_reasons}")
     else:
         st.caption("No foreign friendliness evaluation recorded.")
 

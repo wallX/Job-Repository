@@ -8,6 +8,7 @@ from patchright.sync_api import sync_playwright
 import sys
 import time
 import random
+from urllib.parse import urlparse
 
 
 # Add project root directory to sys.path
@@ -25,7 +26,17 @@ class JobsChScraper(BaseScraper):
     source_name = "jobs.ch"
 
     def can_handle_url(self, url: str) -> bool:
-        return "jobs.ch" in url
+        try:
+            # Standardize and extract the domain
+            netloc = urlparse(url).netloc.lower()
+
+            # Remove port if present (e.g., jobs.ch:8080)
+            netloc = netloc.split(":")[0]
+
+            # Match exact domain or subdomains (e.g., www.jobs.ch)
+            return netloc == self.source_name or netloc.endswith(f".{self.source_name}")
+        except Exception:
+            return False
 
     def run(self, batch_size: int) -> None:
         run_detail_scraper(batch_size=batch_size)
