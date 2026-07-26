@@ -139,7 +139,7 @@ def run_analysis_pipeline(batch_size: int = 10):
             language_llm_str = ", ".join(inclusivity.language_llm) if isinstance(inclusivity.language_llm, list) else (inclusivity.language_llm or "None")
             llm_tags_str = ", ".join(eval_result.llm_tags) if eval_result.llm_tags else "None"
 
-            print(eval_result.model_dump_json(indent=3))
+            #print(eval_result.model_dump_json(indent=3))
 
             save_llm_evaluation(
                 job_id=job_id,
@@ -168,6 +168,18 @@ def run_analysis_pipeline(batch_size: int = 10):
                 
                 status="Processed"
             )
+            try:
+                print(f"  Score: {role.junior_score}/100 | Junior: {role.is_junior}")
+                print(f"  Stack Gap: {stack_gap_str}")
+                print(f"  Language: {inclusivity.language_friction}")
+                print(f"  Summary: {eval_result.llm_summary}")
+                print(f"  Foreign Friendly Score: {inclusivity.foreign_friendly_score}/100")
+                print(f"  Foreign Friendly Reasons: {inclusivity.foreign_friendly_reasons}")
+                print(f"  LLM Tags: {llm_tags_str}")
+                print(f"  CV Match Rank: {candidate.cv_match_rank}")
+                print(f"  CV Match Reasons: {candidate.cv_match_reasons}\n")
+            except Exception as e:
+                print(f"  Error printing evaluation details for job {job_id} maybe forgot to change field names: {e}\n")
 
 
 
@@ -177,4 +189,4 @@ def run_analysis_pipeline(batch_size: int = 10):
         time.sleep(0.5)
 
 if __name__ == "__main__":
-    run_analysis_pipeline(batch_size=15)
+    run_analysis_pipeline(batch_size=10)
