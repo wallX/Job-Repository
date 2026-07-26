@@ -177,4 +177,4 @@ def run_analysis_pipeline(batch_size: int = 10):
         time.sleep(0.5)
 
 if __name__ == "__main__":
-    run_analysis_pipeline(batch_size=10)
+    run_analysis_pipeline(batch_size=15)

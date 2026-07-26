@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+from pydantic import BaseModel, Field, model_validator
 
 class RoleClassification(BaseModel):
     """Metadata regarding role level, experience requirements, and work arrangements STRICTLY derived from the Job Description."""
@@ -12,6 +13,7 @@ class RoleClassification(BaseModel):
     )
     
     required_yoe: int = Field(
+        ge=0,
         description=(
             "Extract required years of experience from the JOB DESCRIPTION as an integer. "
             "Rules: 1) Use lower bound if range (e.g., '3-5 years' -> 3). "
@@ -32,6 +34,16 @@ class RoleClassification(BaseModel):
         )
     )
     
-    work_model: str = Field(
-        description="The work model for the role: 'Remote', 'On-site', 'Hybrid', or 'Flexible'."
+    # UPGRADE: Replaced generic 'str' with strict Literal to enforce formatting
+    work_model: Literal["ONSITE", "HYBRID", "REMOTE", "FLEXIBLE"] = Field(
+        description="The strictly standardized work model for the role. Must be 'ONSITE', 'HYBRID', 'REMOTE', or 'FLEXIBLE'."
     )
+
+    # UPGRADE: Prevents logical contradictions between YOE and Junior status
+    @model_validator(mode='after')
+    def validate_junior_logic(self) -> 'RoleClassification':
+        if not self.is_junior and self.required_yoe == 0 and self.junior_score >= 70.0:
+            raise ValueError("Contradiction: is_junior cannot be False if required_yoe is 0 and junior_score is high.")
+        if self.is_junior and self.required_yoe >= 3:
+            raise ValueError(f"Contradiction: Role cannot be 'junior' if required YOE is {self.required_yoe}.")
+        return self
