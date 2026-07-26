@@ -4,6 +4,7 @@ from pathlib import Path
 import instructor
 import litellm
 import config
+from pypdf import PdfReader
 
 # Path resolution
 ROOT_DIR = Path(__file__).resolve().parent
@@ -13,8 +14,17 @@ if str(ROOT_DIR) not in sys.path:
 from schemas import JobEvaluation
 from db import get_jobs_pending_llm, save_llm_evaluation
 
-client = instructor.from_litellm(litellm.completion, mode=instructor.Mode.JSON)
+#client = instructor.from_litellm(litellm.completion, mode=instructor.Mode.JSON)
+client = instructor.from_litellm(litellm.completion,  mode=instructor.Mode.JSON_SCHEMA)
 
+def extract_pdf_text(pdf_path: str) -> str:
+    full_path = Path(pdf_path).expanduser()
+    
+    reader = PdfReader(full_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text
 
 def load_prompts(system_path: str = "data/system.md", user_path: str = "data/user.md") -> tuple[str, str]:
     """
@@ -41,12 +51,24 @@ def analyze_job(title: str, company: str, description: str) -> JobEvaluation:
         config.SYSTEM_PROMPT_PATH, 
         config.USER_PROMPT_PATH
     )
-    user_content = f"{user_template}\n\n--- Job Posting ---\nTitle: {title}\nCompany: {company}\n\nDescription:\n{description[:4000]}"
+
+    cv_text = extract_pdf_text(config.CV_PATH)
+    user_content = f"""{user_template}
+        --- CANDIDATE CV / PROFILE ---
+        {cv_text}
+
+        --- JOB POSTING ---
+        Title: {title}
+        Company: {company}
+
+        Description:
+        {description[:20000]}"""
 
     return client.chat.completions.create(
         model=config.DEFAULT_ANALYSIS_MODEL,
         api_base=config.API_BASE,
         response_model=JobEvaluation,
+        max_retries=0,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content}
@@ -114,13 +136,21 @@ def run_analysis_pipeline(batch_size: int = 10):
                 foreign_friendly_score=eval_result.foreign_friendly_score,
                 foreign_friendly_reasons=eval_result.foreign_friendly_reasons,
                 llm_tags=llm_tags_str,
+                cv_match_rank=eval_result.cv_match_rank,
+                cv_match_reasons=eval_result.cv_match_reasons,
                 status="Processed"
             )
 
-            print(f"  Score: {eval_result.junior_score}/10 | Junior: {eval_result.is_junior}")
+            print(f"  Score: {eval_result.junior_score}/100 | Junior: {eval_result.is_junior}")
             print(f"  Stack Gap: {stack_gap_str}")
             print(f"  Language: {eval_result.language_friction}")
-            print(f"  Summary: {eval_result.llm_summary}\n")
+            print(f"  Summary: {eval_result.llm_summary}")
+            print(f"  Foreign Friendly Score: {eval_result.foreign_friendly_score}/100")
+            print(f"  Foreign Friendly Reasons: {eval_result.foreign_friendly_reasons}")
+            print(f"  LLM Tags: {llm_tags_str}")
+            print(f"  CV Match Rank: {eval_result.cv_match_rank}")
+            print(f"  CV Match Reasons: {eval_result.cv_match_reasons}\n")
+
 
 
         except Exception as e:

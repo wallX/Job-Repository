@@ -6,3 +6,4 @@ python-dotenv
 patchright
 streamlit
 pandas
+pypdf

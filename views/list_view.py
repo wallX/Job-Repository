@@ -12,6 +12,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
+from analyzer import extract_pdf_text
 import db
 import config
 
@@ -40,8 +41,9 @@ def build_chat_messages(job: pd.Series, history: list[dict], user_input: str) ->
     # Format raw query output cleanly for LLM consumption
     raw_job_db_output = json.dumps(job_data_dict, indent=2, default=str)
 
+    cv_text = extract_pdf_text(config.CV_PATH)
     # 3. Assemble system prompt with direct DB query output
-    system_content = f"{system_prompt_template}\n\n=== RAW JOB RECORD FROM DATABASE ===\n{raw_job_db_output}"
+    system_content = f"{system_prompt_template}\n\n=== RAW JOB RECORD FROM DATABASE ===\n{raw_job_db_output}\n\n--- CANDIDATE CV / PROFILE --- \n{cv_text}"
 
     # 4. Assemble messages list
     messages = [{"role": "system", "content": system_content}]
@@ -62,6 +64,10 @@ def build_chat_messages(job: pd.Series, history: list[dict], user_input: str) ->
 
     return messages
 
+def clean_str(val, default="N/A"):
+        if pd.notna(val) and str(val).strip():
+            return str(val).strip()
+        return default
 
 def normalize_text(text: str) -> str:
     """
@@ -97,15 +103,47 @@ STATUS_COLORS = {
     "Interviewing": {"bg": "#e0f2fe", "text": "#0369a1", "border": "#7dd3fc"}, # Blue
     "Accepted":    {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
 }
-def render_status_badge_html(status: str) -> str:
-    """Generates styled HTML badge without excess bottom/top margin."""
-    s = status if status in STATUS_COLORS else "Not Applied"
-    style = STATUS_COLORS[s]
+
+# Match rank options and associated color mappings
+MATCH_RANK_OPTIONS = ["Fit", "Not Fit", "Borderline", "Neutral", "Custom"]
+
+MATCH_RANK_COLORS = {
+    "Fit":        {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
+    "Not Fit":    {"bg": "#fee2e2", "text": "#b91c1c", "border": "#fca5a5"}, # Red
+    "Borderline": {"bg": "#fef9c3", "text": "#a16207", "border": "#fde047"}, # Yellow
+    "Neutral":    {"bg": "#e2e8f0", "text": "#475569", "border": "#cbd5e1"}, # Slate Gray
+    "Custom":     {"bg": "#f3e8ff", "text": "#6b21a8", "border": "#d8b4fe"}, # Purple (Fallback for custom LLM ranks)
+}
+
+def render_badge_html(
+    value: str, 
+    color_map: dict = None, 
+    options_list: list = None, 
+    default_fallback: str = "Neutral"
+) -> str:
+    """
+    Generates styled HTML badge.
+    Accepts value along with custom color maps and allowed option lists as inputs.
+    """
+    val = str(value).strip() if value else default_fallback
+    
+    # Use provided color map or default empty dict
+    colors = color_map if color_map is not None else {}
+
+    # Check if value exists in provided list/dict, otherwise use fallback styling
+    if options_list and val not in options_list and val in colors:
+        style = colors[val]
+    elif val in colors:
+        style = colors[val]
+    else:
+        # Fallback for unrecognized/custom strings (e.g. 'Custom' or default fallback)
+        style = colors.get("Custom", colors.get(default_fallback, {"bg": "#e2e8f0", "text": "#475569", "border": "#cbd5e1"}))
+
     return (
         f'<span style="background-color: {style["bg"]}; color: {style["text"]}; '
         f'border: 1px solid {style["border"]}; padding: 3px 10px; border-radius: 12px; '
         f'font-size: 0.8rem; font-weight: 600; white-space: nowrap; display: inline-block; '
-        f'margin-top: 4px; margin-bottom: 0px;">{s}</span>'
+        f'margin-top: 4px; margin-bottom: 0px;">{val}</span>'
     )
 
 def on_status_change(job_id: str, selectbox_key: str):
@@ -121,23 +159,87 @@ def show_job_details_dialog(job: pd.Series):
     job_id = str(job.get("job_id"))
     title = job.get("title") or "Untitled Job"
     company = job.get("company") or "Unknown Company"
-    
-    st.subheader(f"{title} @ {company}")
+
     
     # --- HEADER LINK & BADGE ROW ---
     current_status = job.get("application_status") or "Not Applied"
     if current_status not in STATUS_OPTIONS:
         current_status = "Not Applied"
 
-    col_link, col_badge, _ = st.columns([1.2, 1, 8], vertical_alignment="center")
     
-    with col_link:
-        if job.get("url"):
-            st.link_button("🌐 View Original Job Posting", job["url"])
-            
-    with col_badge:
-        st.markdown(render_status_badge_html(current_status), unsafe_allow_html=True)
+    app_status = clean_str(job.get("application_status"), default="Not Applied")
+    if app_status not in STATUS_OPTIONS:
+        app_status = "Not Applied"
 
+    cv_rank_val = clean_str(job.get("cv_match_rank"), default="Unknown")
+
+    st.markdown(
+        f'''
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+            <h3 style="margin: 0; padding: 0; font-size: 1.3rem; font-weight: 600; line-height: 1.2;">
+                {title} <span style="font-weight: 400; color: #64748b;">@ {company}</span>
+            </h3>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                {render_badge_html(
+                    app_status, 
+                    color_map=STATUS_COLORS, 
+                    options_list=STATUS_OPTIONS
+                )}
+                {render_badge_html(
+                    cv_rank_val, 
+                    color_map=MATCH_RANK_COLORS, 
+                    options_list=MATCH_RANK_OPTIONS
+                )}
+            </div>
+        </div>
+        ''',
+        unsafe_allow_html=True
+    )
+    # Tags & Metrics Processing
+    search_terms_raw = clean_str(job.get("search_term"), default="")
+    search_terms = [t.strip() for t in search_terms_raw.split(",") if t.strip()] if search_terms_raw != "N/A" else []
+
+    llm_tags_raw = job.get("llm_tags")
+    if isinstance(llm_tags_raw, list):
+        llm_tags = [str(t).strip() for t in llm_tags_raw if str(t).strip()]
+    elif pd.notna(llm_tags_raw) and str(llm_tags_raw).strip():
+        llm_tags = [t.strip() for t in str(llm_tags_raw).split(",") if t.strip()]
+    else:
+        llm_tags = []
+
+    # Tags Section (Search terms & LLM tags)
+    if search_terms or llm_tags:
+        tags_html = ""
+        for term in search_terms:
+            tags_html += f'<span style="background-color: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; margin-right: 4px; display: inline-block; margin-bottom: 4px;">🔍 {term}</span>'
+        for tag in llm_tags:
+            tags_html += f'<span style="background-color: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 500; margin-right: 4px; display: inline-block; margin-bottom: 4px;">🏷️ {tag}</span>'
+        
+        st.markdown(f'<div style="margin-bottom: 10px;">{tags_html}</div>', unsafe_allow_html=True)
+    
+
+    # --- LLM SUMMARY & STACK GAPS ---
+    st.markdown("### 📜 LLM Summary")
+    summary = job.get("llm_summary")
+    if pd.notna(summary) and str(summary).strip():
+        st.write(str(summary))
+    else:
+        st.caption("Pending LLM analysis...")
+
+     # --- CV Fit Assessment ---
+    st.markdown("### 👨🏻‍💻 Candidate Fit Assessment")
+    summary = job.get("cv_match_reasons")
+    if pd.notna(summary) and str(summary).strip():
+        st.write(str(summary))
+    else:
+        st.caption("Pending LLM analysis...")
+
+
+    
+
+    if job.get("url"):
+        st.link_button("🌐 View Original Job Posting", job["url"])
+    
     st.divider()
 
     # --- EDITABLE APPLICATION TRACKING (EXPANDER DROPDOWN) ---
@@ -171,6 +273,7 @@ def show_job_details_dialog(job: pd.Series):
                 st.rerun()
 
     st.divider()
+
 
     # =========================================================
     # 💬 AI ASSISTANT CHAT (ADDED HERE)
@@ -246,35 +349,24 @@ def show_job_details_dialog(job: pd.Series):
     m2.metric("Junior Friendly", "YES" if job.get("is_junior") == 1 else "NO")
     
     j_score = job.get("junior_score")
-    m3.metric("Junior Score", f"{j_score:.1f}/10" if pd.notna(j_score) else "N/A")
+    m3.metric("Junior Score", f"{j_score:.0f}/100" if pd.notna(j_score) else "N/A")
     
     ff_score = job.get("foreign_friendly_score")
-    m4.metric("Foreign Score", f"{ff_score:.1f}/10" if pd.notna(ff_score) else "N/A")
-
-    # --- LLM TAGS & FOREIGN FRIENDLY REASONS ---
-    st.markdown("### 🌍 Foreign Friendliness & Stack Insights")
-    
+    m4.metric("Foreign Score", f"{ff_score:.0f}/100" if pd.notna(ff_score) else "N/A")
+ 
     ff_reasons = job.get("foreign_friendly_reasons")
     if pd.notna(ff_reasons) and str(ff_reasons).strip():
-        st.info(f"{ff_reasons}")
+        st.info(f"**Foreign Friendliness:**{ff_reasons}")
     else:
         st.caption("No foreign friendliness evaluation recorded.")
 
-    llm_tags = job.get("llm_tags")
-    if pd.notna(llm_tags) and str(llm_tags).strip():
-        if isinstance(llm_tags, list):
-            tags_str = ", ".join(llm_tags)
-        else:
-            tags_str = str(llm_tags)
-        st.markdown(f"🏷️ **LLM Generated Tags:** `{tags_str}`")
-
-    # --- LLM SUMMARY & STACK GAPS ---
-    st.markdown("### 🤖 LLM Summary")
-    summary = job.get("llm_summary")
-    if pd.notna(summary) and str(summary).strip():
-        st.write(str(summary))
-    else:
-        st.caption("Pending LLM analysis...")
+    #llm_tags = job.get("llm_tags")
+    #if pd.notna(llm_tags) and str(llm_tags).strip():
+    #    if isinstance(llm_tags, list):
+    #        tags_str = ", ".join(llm_tags)
+    #    else:
+    #        tags_str = str(llm_tags)
+    #    st.markdown(f"🏷️ **LLM Generated Tags:** `{tags_str}`")
 
     gap = job.get("stack_gap")
     if pd.notna(gap) and str(gap).strip():
@@ -289,10 +381,6 @@ def show_job_details_dialog(job: pd.Series):
 def render_job_card(job: pd.Series):
     """Renders a single job offer card with compact action buttons and aligned metadata."""
     
-    def clean_str(val, default="N/A"):
-        if pd.notna(val) and str(val).strip():
-            return str(val).strip()
-        return default
 
     # 1. Company Logo via company_image_url with URL validation
     company_image_url = clean_str(job.get("company_image_url"), default="")
@@ -365,6 +453,8 @@ def render_job_card(job: pd.Series):
     if app_status not in STATUS_OPTIONS:
         app_status = "Not Applied"
 
+    cv_rank_val = clean_str(job.get("cv_match_rank"), default="Unknown")
+
     # 3. Card Container
     with st.container(key=f"job_card_{job_id}", border=True):
         col_header, col_actions = st.columns([4, 1.2], vertical_alignment="top")
@@ -385,7 +475,13 @@ def render_job_card(job: pd.Series):
             )
 
             # Status Badge Underneath
-            st.markdown(render_status_badge_html(app_status), unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">'
+                f'{render_badge_html(app_status, color_map=STATUS_COLORS, options_list=STATUS_OPTIONS)} {render_badge_html(cv_rank_val, color_map=MATCH_RANK_COLORS, options_list=MATCH_RANK_OPTIONS)}'
+                f'</div>', 
+                unsafe_allow_html=True
+            )
+            #st.markdown(render_badge_html(app_status, color_map=STATUS_COLORS, options_list=STATUS_OPTIONS), unsafe_allow_html=True)
 
         with col_actions:
             btn_c1, btn_c2 = st.columns(2)

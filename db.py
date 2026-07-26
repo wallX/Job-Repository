@@ -58,7 +58,9 @@ def init_db():
         "llm_tags": "TEXT DEFAULT NULL",
         "llm_summary": "TEXT DEFAULT NULL",
 
-        # Personal Metadata
+        # Personal Data
+        "cv_match_rank": "TEXT DEFAULT NULL",
+        "cv_match_reasons": "TEXT DEFAULT NULL",
         "application_status": "TEXT DEFAULT 'Not Applied'",
         "application_notes": "TEXT DEFAULT ''",
         
@@ -152,6 +154,8 @@ def save_llm_evaluation(
     llm_tags: str,
     foreign_friendly_score: float,
     foreign_friendly_reasons: str,
+    cv_match_rank: str,
+    cv_match_reasons: str,
     status: str = "Processed"
 ):
     """Updates SQLite with the structured evaluation result from the LLM."""
@@ -170,6 +174,8 @@ def save_llm_evaluation(
                 required_yoe = :required_yoe,
                 foreign_friendly_score = :foreign_friendly_score,
                 foreign_friendly_reasons = :foreign_friendly_reasons,
+                cv_match_rank = :cv_match_rank,
+                cv_match_reasons = :cv_match_reasons,
                 status = :status
             WHERE job_id = :job_id
         """, {
@@ -186,6 +192,8 @@ def save_llm_evaluation(
             "llm_tags": llm_tags,
             "foreign_friendly_score": foreign_friendly_score,
             "foreign_friendly_reasons": foreign_friendly_reasons,
+            "cv_match_rank": cv_match_rank,
+            "cv_match_reasons": cv_match_reasons,
             "status": status
         })
         conn.commit()

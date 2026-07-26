@@ -9,7 +9,7 @@
 - **Software Architecture & Concepts:** Distributed Systems Design, Onion Architecture, SOLID & GRASP Principles, Asynchronous Microservices, REST APIs, Object-Oriented Design
 - **Database & Caching:** PostgreSQL, Redis, Database Management Systems
 - **Engineering Advantage (Cloud/DevOps/Observability):** Docker, Nginx, Linux (systemd), Pulumi (IaC), CI/CD (Azure DevOps, GitHub Actions), Prometheus, Grafana, Loki
-- **Spoken Languages:** Portuguese (Native), English (Full Professional / C1), German (Elementary / Actively learning)
+- **Spoken Languages:** Portuguese (Native), English (Full Professional / C1), German A1 (Actively learning)
 - **Key Engineering Highlights:**
   - Architected asynchronous Rust microservices behind Nginx with JWT authorization, Redis token revocation, and upload proxying.
   - Engineered Node.js, TypeScript, and Python data collection pipelines processing Nginx logs into PostgreSQL/Loki with JSON outputs.
