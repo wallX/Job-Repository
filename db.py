@@ -43,7 +43,11 @@ def init_db():
         "salary_estimate": "TEXT DEFAULT NULL",
         "full_description": "TEXT DEFAULT NULL",
         "raw_description_html": "TEXT DEFAULT NULL",
+        "seniority_level": "TEXT DEFAULT NULL",
+        "job_function": "TEXT DEFAULT NULL",
+        "industry": "TEXT DEFAULT NULL",
         
+
         # LLM Layer Fields
         "is_junior": "INTEGER DEFAULT NULL",
         "junior_score": "REAL DEFAULT NULL",
@@ -115,7 +119,7 @@ def get_unprocessed_jobs(status: str, source: str, limit: int = None) -> List[sq
     with get_connection() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        sql = "SELECT job_id, url, search_term FROM jobs WHERE full_description IS NULL AND source = ? AND status = ?"
+        sql = "SELECT job_id, url, search_term FROM jobs WHERE source = ? AND status = ?"
         params = [source, status]
 
         if limit is not None:
@@ -146,7 +150,7 @@ def save_llm_evaluation(
     junior_score: float,
     stack_gap: str,
     language_friction: str,
-    language_llm: List[str],
+    language_llm: str,
     language_llm_only_english: bool,
     work_model: str,
     required_yoe: int,
@@ -211,6 +215,9 @@ def update_job_details(
     title: str = None,
     company: str = None,
     city: str = None,
+    seniority: str = None,
+    function: str = None,
+    industry: str = None,
     company_image_url: str = None
 ):
     """
@@ -232,6 +239,9 @@ def update_job_details(
                 full_description = COALESCE(:clean_text, full_description),
                 raw_description_html = COALESCE(:raw_html, raw_description_html),
                 status = COALESCE(:status, status),
+                seniority_level = COALESCE(:seniority, seniority_level),
+                job_function = COALESCE(:function, job_function),
+                industry = COALESCE(:industry, industry),
                 scraped_at = CURRENT_TIMESTAMP
             WHERE job_id = :job_id
         """, {
@@ -247,6 +257,9 @@ def update_job_details(
             "salary": salary,
             "clean_text": clean_text,
             "raw_html": raw_html,
+            "seniority": seniority,
+            "function": function,
+            "industry": industry,
             "status": status
         })
         conn.commit()

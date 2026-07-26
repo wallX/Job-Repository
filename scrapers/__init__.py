@@ -1,12 +1,12 @@
 from scrapers.base import BaseScraper
 from scrapers.jobs_ch import JobsChScraper
-#from scrapers.linkedin import LinkedInScraper
+from scrapers.linkedin_com import LinkedInScraper
 #from scrapers.swissdevjobs import SwissDevJobsScraper
 
 # Central registry mapping source names to scraper instances
 SCRAPER_REGISTRY: dict[str, BaseScraper] = {
     "jobs_ch": JobsChScraper(),
-    #"linkedin": LinkedInScraper(),
+    "linkedin": LinkedInScraper(),
     #"swissdevjobs": SwissDevJobsScraper(),
 }
 
