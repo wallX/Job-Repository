@@ -36,6 +36,13 @@ class JobsChScraper(BaseScraper):
         match = re.search(r'/detail/([a-f0-9\-]+)/?', url)
         return match.group(1) if match else str(hash(url))
 
+    def normalize_url(self, job_id: str) -> str:
+        """Normalizes the URL for storage in the database.
+        This method should return a consistent URL format for the given job_id,
+        ensuring that different URL variations for the same job are treated as identical.
+        """
+        return f"https://www.jobs.ch/en/vacancies/detail/{job_id}/"
+
 
 
 
@@ -185,11 +192,11 @@ def run_detail_scraper(batch_size: int):
             except Exception as e:
                 print(f"  Failed to extract details for {job_id}: {e}")
 
-            # Polite anti-bot delay
-            jitter = random.uniform(2.3, 5.1)
-            print(f"  Waiting {jitter:.2f}s before next request...")
-            time.sleep(jitter)
-            #time.sleep(1000000)
+            if idx < len(jobs):  # No need to wait after the last job
+                jitter = random.uniform(2.3, 5.1)
+                print(f"  Waiting {jitter:.2f}s before next request...")
+                time.sleep(jitter)
+        
         browser.close()
 
 # Implement as a service

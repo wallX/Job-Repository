@@ -37,11 +37,12 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
 
         source = scraper.source_name
         job_id = scraper.extract_job_id(raw_url)
+        processed_url = scraper.normalize_url(job_id)
 
         is_new = db.insert_job(
             job_id=job_id,
             source=source,
-            url=raw_url,
+            url=processed_url,
             search_terms=search_terms
         )
 

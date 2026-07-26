@@ -32,9 +32,19 @@ class LinkedInScraper(BaseScraper):
 
 
     def extract_job_id(self, url: str) -> str:
-        """Extracts numeric job ID from LinkedIn URLs like /jobs/view/4431072880/"""
-        match = re.search(r'/jobs/view/(\d+)', url)
+        """
+        Extracts numeric job ID from LinkedIn URLs.
+        Supports formats like /jobs/view/4431072880/ and URLs containing currentJobId=4431072880.
+        """
+        match = re.search(r'(?:/jobs/view/|currentJobId=)(\d+)', url)
         return match.group(1) if match else str(hash(url))
+
+    def normalize_url(self, job_id: str) -> str:
+        """Normalizes the URL for storage in the database.
+        This method should return a consistent URL format for the given job_id,
+        ensuring that different URL variations for the same job are treated as identical.
+        """
+        return f"https://www.linkedin.com/jobs/view/{job_id}/"
 
 
 import re
@@ -125,8 +135,7 @@ def run_detail_scraper(batch_size: int):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            #headless=True,
-            headless=False,
+            headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--disable-features=IsolateOrigins,site-per-process",
@@ -253,10 +262,10 @@ def run_detail_scraper(batch_size: int):
                 print(f"  Failed to extract details for {job_id}: {e}")
 
             # Polite anti-bot delay
-            jitter = random.uniform(2.3, 5.1)
-            print(f"  Waiting {jitter:.2f}s before next request...")
-            time.sleep(jitter)
-            #time.sleep(1000000)
+            if idx < len(jobs):  # No need to wait after the last job
+                jitter = random.uniform(2.3, 5.1)
+                print(f"  Waiting {jitter:.2f}s before next request...")
+                time.sleep(jitter)
         browser.close()
 
 # Implement as a service

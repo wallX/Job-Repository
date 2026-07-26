@@ -21,3 +21,10 @@ class BaseScraper(ABC):
     def extract_job_id(self, url: str) -> str:
         """Extracts a unique job identifier from the given URL."""
         pass
+    @abstractmethod
+    def normalize_url(self, job_id: str) -> str:
+        """Normalizes the URL for storage in the database.
+        This method should return a consistent URL format for the given job_id,
+        ensuring that different URL variations for the same job are treated as identical.
+        """
+        pass
