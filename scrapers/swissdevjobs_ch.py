@@ -225,7 +225,7 @@ def run_detail_scraper(batch_size: int):
                 # Combine all non-empty sections with spacing
                 consolidated_description = "\n\n".join(merged_description_sections)
 
-                print(consolidated_description)
+                #print(consolidated_description)
 
 
                 # Save directly to SQLite

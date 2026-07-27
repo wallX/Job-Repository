@@ -479,7 +479,7 @@ def render_job_card(job: pd.Series):
     required_yoe_str = f"{yoe_val} yrs" if pd.notna(yoe_val) and str(yoe_val).strip() else "N/A"
 
     ff_score = job.get("foreign_friendly_score")
-    ff_score_str = f"{ff_score:.1f}/10" if pd.notna(ff_score) else "N/A"
+    ff_score_str = f"{ff_score:.0f}/100" if pd.notna(ff_score) else "N/A"
 
     # Application Status
     app_status = clean_str(job.get("application_status"), default="Not Applied")

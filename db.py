@@ -293,38 +293,44 @@ def insert_job(job_id: str, source: str, title: str, company: str,
         ))
         conn.commit()
 
-def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = None) -> bool:
+def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = None) -> dict:
     """
-    Inserts a new job entry into the database with minimal fields.
-    If the job_id already exists, it appends any new search terms to the existing list.
-    All search terms are cleaned and title-cased (e.g. "test" -> "Test").
+    Inserts a new job or updates search terms for an existing job.
+    Returns a dict with insertion status, archival status, and reason.
     """
     search_terms = search_terms or []
-    
-    # Title-case incoming terms
     normalized_incoming = [t.strip().title() for t in search_terms if t.strip()]
     
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        # Check if job already exists
-        cursor.execute("SELECT search_term FROM jobs WHERE job_id = ?", (job_id,))
+        # Query search terms along with archival flags
+        cursor.execute("""
+            SELECT search_term, archived, reason_for_archival 
+            FROM jobs 
+            WHERE job_id = ?
+        """, (job_id,))
         row = cursor.fetchone()
 
         if row is None:
-            # New Entry: Store title-cased terms as a comma-separated string
+            # New Entry
             terms_string = ", ".join(sorted(set(normalized_incoming)))
             cursor.execute("""
                 INSERT INTO jobs (job_id, source, url, search_term, status)
                 VALUES (?, ?, ?, ?, 'New')
             """, (job_id, source, url, terms_string))
             conn.commit()
-            return True  # Inserted new
-        else:
-            # Existing Entry: Parse existing terms, title-case them, combine, and update
-            existing_raw = row[0]
-            existing_terms = []
             
+            return {
+                "is_new": True,
+                "archived": False,
+                "reason_for_archival": None
+            }
+        else:
+            # Existing Entry
+            existing_raw, archived, reason_for_archival = row
+            
+            existing_terms = []
             if existing_raw:
                 existing_terms = [t.strip().title() for t in existing_raw.split(",") if t.strip()]
                 
@@ -338,7 +344,13 @@ def insert_job(job_id: str, source: str, url: str, search_terms: list[str] = Non
                 WHERE job_id = ?
             """, (updated_json, job_id))
             conn.commit()
-            return False  # Appended to existing
+            
+            return {
+                "is_new": False,
+                "archived": bool(archived),
+                "reason_for_archival": reason_for_archival
+            }
+
 
 ########### UI Functions ###########
 def fetch_existing_tags() -> list[str]:

@@ -31,6 +31,7 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
 
     added_count = 0
     updated_count = 0
+    log_lines = []
 
     for idx, raw_url in enumerate(url_list, 1):
         scraper = get_scraper_for_url(raw_url)
@@ -39,22 +40,33 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
         job_id = scraper.extract_job_id(raw_url)
         processed_url = scraper.normalize_url(job_id)
 
-        is_new = db.insert_job(
+        result = db.insert_job(
             job_id=job_id,
             source=source,
             url=processed_url,
             search_terms=search_terms
         )
 
-        if is_new:
+        prefix = f"[{idx}/{len(url_list)}] {source}/{job_id}"
+
+        if result["is_new"]:
             added_count += 1
-            print(f"  [{idx}/{len(url_list)}] Inserted New ({source}): {job_id}")
+            line = f"{prefix} -> Inserted New"
         else:
             updated_count += 1
-            print(f"  [{idx}/{len(url_list)}] Appended Terms to Existing: {job_id}")
+            line = f"{prefix} -> Appended Terms to Existing"
+            if result["archived"]:
+                reason = result["reason_for_archival"] or "No reason specified"
+                line += f" (Archived - Reason: {reason})"
 
-    print(f"\n Finished: {added_count} new job(s) added, {updated_count} updated with search terms.")
-    return f"Job {source}/{job_id}: {added_count} new job(s) added, {updated_count} updated with search terms."
+        print(line)
+        log_lines.append(line)
+
+    summary = f"\nFinished: {added_count} new job(s) added, {updated_count} updated with search terms."
+    print(summary)
+
+    # Return the detailed logs + summary
+    return "\n".join(log_lines) + f"\n\n{summary.strip()}"
 
 def render_ingest_view():
     st.subheader("➕ Ingest New Job Offer")
@@ -64,10 +76,11 @@ def render_ingest_view():
         st.session_state.available_tags = db.fetch_existing_tags()
 
     with st.form("manual_ingest_form", clear_on_submit=True):
-        url_input = st.text_input(
-            "Job Offer URL",
-            placeholder="https://www.jobs.ch/en/vacancies/detail/cc950237-d3a0-4eaa-aa97-7dc7441bb6ca/",
-            help="Direct web link to the job posting."
+        url_input = st.text_area(
+            "Job Offer URLs",
+            placeholder="https://www.jobs.ch/en/vacancies/detail/123...\nhttps://www.jobs.ch/en/vacancies/detail/456...",
+            help="Paste one or more job posting links (one per line).",
+            height=150
         )
 
         selected_tags = st.multiselect(
@@ -100,7 +113,12 @@ def render_ingest_view():
                     # 3. Trigger ingestion with normalized search terms
                     result =ingest_urls(urls=clean_url, search_terms=normalized_tags)
 
-                    st.success(f"✅ Job offer queued! {result}.")
+                    # Show a clean top-level success banner
+                    st.success("✅ Job offer queued!")
+
+                    # Put the long return string inside a collapsable detail box
+                    with st.expander("Show Detailed Log", expanded=True):
+                        st.text(result)  # st.text preserves line breaks and spacing cleanly
 
                 except Exception as e:
                     st.error(f"Failed to ingest job offer: {e}")
