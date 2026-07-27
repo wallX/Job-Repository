@@ -678,7 +678,8 @@ def render_list_view():
                     row.get("stack_gap"),
                     row.get("full_description"),
                     row.get("search_term"),
-                    row.get("llm_tags")
+                    row.get("llm_tags"),
+                    row.get("search_term"),
                 ]
                 searchable_text = normalize_text(" ".join([str(f) for f in fields_to_search if pd.notna(f)]))
                 return all(token in searchable_text for token in query_tokens)
