@@ -19,6 +19,8 @@ import config
 
 ARCHIVE_REASONS = [
     "Not Qualified / Stack Gap",
+    "Location / Commute Issues",
+    "Language Gap / Communication",
     "Low Salary / Benefits",
     "Bad Location / Remote Friction",
     "Position Closed / Expired",
@@ -245,10 +247,49 @@ def show_job_details_dialog(job: pd.Series):
         st.caption("Pending LLM analysis...")
 
 
-    
+    # Adjusted weights so Column 1 tightly wraps its longer button label
+    st.markdown("""
+        <style>
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stLinkButton"]) {
+            gap: 8px !important;
+            justify-content: flex-start !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stLinkButton"]) > div {
+            flex: 0 0 auto !important;
+            width: auto !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    if job.get("url"):
-        st.link_button("🌐 View Original Job Posting", job["url"])
+    btn_c1, btn_c2 = st.columns(2, vertical_alignment="center")
+
+    with btn_c1:
+        if job.get("url"):
+            st.link_button("🌐 View Original Job Posting", job["url"])
+
+    with btn_c2:
+        with st.popover("Archive", type="primary", help="Archive job offer"):
+            st.markdown("**Archive this job?**")
+            
+            selected_reason = st.selectbox(
+                "Reason for archiving:",
+                options=ARCHIVE_REASONS,
+                key=f"archive_reason_select_detail_{job_id}"
+            )
+            
+            custom_reason = ""
+            if selected_reason == "Other (Custom Reason)":
+                custom_reason = st.text_input(
+                    "Enter custom reason:", 
+                    placeholder="e.g., Too far away...",
+                    key=f"archive_reason_custom_detail_{job_id}"
+                )
+            
+            if st.button("Confirm Archive", key=f"confirm_archive_detail_{job_id}", type="primary", use_container_width=True):
+                final_reason = custom_reason.strip() if selected_reason == "Other (Custom Reason)" else selected_reason
+                db.archive_job(job_id=job_id, reason=final_reason or "No reason provided")
+                st.toast("📦 Job offer archived!")
+                st.rerun()
     
     st.divider()
 
