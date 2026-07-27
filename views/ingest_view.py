@@ -72,7 +72,7 @@ def render_ingest_view():
         selected_tags = st.multiselect(
             "Search Terms / Tags",
             options=st.session_state.available_tags,
-            default=["Python"] if "Python" in st.session_state.available_tags else [],
+            default=["Junior Software Engineer"] if "Junior Software Engineer" in st.session_state.available_tags else [],
             accept_new_options=True,
             placeholder="Select or type to add search terms...",
             help="Select existing terms or type a custom term and press Enter."

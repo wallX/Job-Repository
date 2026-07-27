@@ -105,11 +105,11 @@ STATUS_COLORS = {
 }
 
 # Match rank options and associated color mappings
-MATCH_RANK_OPTIONS = ["Fit", "Not Fit", "Borderline", "Neutral", "Custom"]
+MATCH_RANK_OPTIONS = ["Fit", "Unfit", "Borderline", "Unknown"]
 
 MATCH_RANK_COLORS = {
     "Fit":        {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
-    "Not Fit":    {"bg": "#fee2e2", "text": "#b91c1c", "border": "#fca5a5"}, # Red
+    "Unfit":    {"bg": "#fee2e2", "text": "#b91c1c", "border": "#fca5a5"}, # Red
     "Borderline": {"bg": "#fef9c3", "text": "#a16207", "border": "#fde047"}, # Yellow
     "Neutral":    {"bg": "#e2e8f0", "text": "#475569", "border": "#cbd5e1"}, # Slate Gray
     "Custom":     {"bg": "#f3e8ff", "text": "#6b21a8", "border": "#d8b4fe"}, # Purple (Fallback for custom LLM ranks)
@@ -348,8 +348,7 @@ def show_job_details_dialog(job: pd.Series):
     m1.metric("Pipeline Status", str(job.get("status", "N/A")))
     m2.metric("Junior Friendly", "YES" if job.get("is_junior") == 1 else "NO")
     
-    j_score = job.get("junior_score")
-    m3.metric("Junior Score", f"{j_score:.0f}/100" if pd.notna(j_score) else "N/A")
+    m3.metric("Seniority Level", f"{job.get('seniority_level', 'N/A')}")
     
     ff_score = job.get("foreign_friendly_score")
     m4.metric("Foreign Score", f"{ff_score:.0f}/100" if pd.notna(ff_score) else "N/A")
@@ -412,7 +411,7 @@ def render_job_card(job: pd.Series):
     company = clean_str(job.get("company"), "Unknown Company")
     location = clean_str(job.get("location") or job.get("city"), "Not specified")
     work_model = clean_str(job.get("work_model"), "N/A")
-    workload = clean_str(job.get("workload"), "N/A")
+    seniority_level = clean_str(job.get("seniority_level"), "N/A")
     contract_type = clean_str(job.get("contract_type"), "N/A")
     
     raw_pub_date = job.get("publication_date") or job.get("added_at")
@@ -510,7 +509,7 @@ def render_job_card(job: pd.Series):
         c1, c2, c3, c4 = st.columns(4)
         c1.markdown(f"📍 **Location:**\n{location}")
         c2.markdown(f"🏠 **Work Model:**\n{work_model}")
-        c3.markdown(f"⏱️ **Workload:**\n{workload}")
+        c3.markdown(f"⏱️ **Seniority:**\n{seniority_level}")
         c4.markdown(f"📜 **Contract:**\n{contract_type}")
 
         # Row 2: Candidate Match & Post Info
@@ -542,43 +541,10 @@ def render_list_view():
         key="sidebar_search"
     )
 
-    # 2. Application Status Multiselect
-    selected_app_statuses = st.sidebar.multiselect(
-        "Application Status", 
-        options=STATUS_OPTIONS, 
-        default=STATUS_OPTIONS, 
-        key="sidebar_app_status"
-    )
-
-    # 3. Dynamic Location Filter
-    all_locations = set()
-    for row in df["location"].fillna(df["city"]).dropna():
-        for loc in str(row).split(","):
-            cleaned = loc.strip()
-            if cleaned and cleaned.lower() != "n/a":
-                all_locations.add(cleaned)
-
-    selected_locations = st.sidebar.multiselect(
-        "Locations / Cities", 
-        options=sorted(list(all_locations)), 
-        key="sidebar_locations"
-    )
-
-    # 4. Dynamic Search Terms Filter
-    all_terms = set()
-    for row in df["search_term"].dropna():
-        all_terms.update([t.strip() for t in str(row).split(",") if t.strip()])
-
-    selected_terms = st.sidebar.multiselect(
-        "Search Terms / Query", 
-        options=sorted(list(all_terms)), 
-        key="sidebar_terms"
-    )
-
-    # =========================================================
+      # =========================================================
     # 🔀 SORTING CONTROLS (PLACED ABOVE CHECKBOXES)
     # =========================================================
-    st.sidebar.divider()
+   # st.sidebar.divider()
     st.sidebar.header("🔀 Sort Offers")
 
     SORT_OPTIONS = {
@@ -589,6 +555,8 @@ def render_list_view():
         "Foreign Friendly Score": "foreign_friendly_score",
         "Required YOE": "required_yoe",
         "Company Name": "company",
+        "Search Term": "search_term",
+        "CV Match Rank": "cv_match_rank",
     }
 
     available_sort_options = {
@@ -616,6 +584,49 @@ def render_list_view():
             key="sidebar_sort_order"
         )
 
+    # 2. Application Status Multiselect
+    selected_app_statuses = st.sidebar.multiselect(
+        "Application Status", 
+        options=STATUS_OPTIONS, 
+        default=STATUS_OPTIONS, 
+        key="sidebar_app_status"
+    )
+
+    # 3. CV Match Rank Multiselect
+    selected_cv_ranks = st.sidebar.multiselect(
+        "CV Match Rank", 
+        options=MATCH_RANK_OPTIONS, 
+        default=["Fit", "Borderline"], 
+        key="cv_rank_filter"
+    )
+
+    # 3. Dynamic Location Filter
+    all_locations = set()
+    for row in df["location"].fillna(df["city"]).dropna():
+        for loc in str(row).split(","):
+            cleaned = loc.strip()
+            if cleaned and cleaned.lower() != "n/a":
+                all_locations.add(cleaned)
+
+    selected_locations = st.sidebar.multiselect(
+        "Locations / Cities", 
+        options=sorted(list(all_locations)), 
+        key="sidebar_locations"
+    )
+
+    # 4. Dynamic Search Terms Filter
+    all_terms = set()
+    for row in df["search_term"].dropna():
+        all_terms.update([t.strip() for t in str(row).split(",") if t.strip()])
+
+    selected_terms = st.sidebar.multiselect(
+        "Search Terms / Query", 
+        options=sorted(list(all_terms)), 
+        key="sidebar_terms"
+    )
+
+  
+
     # =========================================================
     # 👶/🌍 CHECKBOX FILTERS (PLACED BELOW SORTING)
     # =========================================================
@@ -636,6 +647,12 @@ def render_list_view():
     if "application_status" in filtered_df.columns and selected_app_statuses:
         filtered_df["temp_app_status"] = filtered_df["application_status"].fillna("Not Applied")
         filtered_df = filtered_df[filtered_df["temp_app_status"].isin(selected_app_statuses)]
+
+    # CV Match Rank Filter
+    if "cv_match_rank" in filtered_df.columns and selected_cv_ranks:
+        filtered_df["temp_cv_rank"] = filtered_df["cv_match_rank"].fillna("Unknown")
+        filtered_df = filtered_df[filtered_df["temp_cv_rank"].isin(selected_cv_ranks)]
+
 
     # Junior Only Filter
     if junior_only and "is_junior" in filtered_df.columns:
@@ -680,6 +697,7 @@ def render_list_view():
                     row.get("search_term"),
                     row.get("llm_tags"),
                     row.get("search_term"),
+                    row.get("cv_rank_val"),
                 ]
                 searchable_text = normalize_text(" ".join([str(f) for f in fields_to_search if pd.notna(f)]))
                 return all(token in searchable_text for token in query_tokens)

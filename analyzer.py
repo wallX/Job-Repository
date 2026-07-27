@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 from pathlib import Path
@@ -6,6 +7,7 @@ import litellm
 import config
 from pypdf import PdfReader
 from typing import TypeVar, Type
+import tiktoken
 
 # Path resolution
 ROOT_DIR = Path(__file__).resolve().parent
@@ -50,9 +52,67 @@ def load_prompts(system_path: str = "data/system.md", user_path: str = "data/use
 
 T = TypeVar("T", bound=litellm.BaseModel)
 
+def get_cleaned_jd(raw_jd: str, client, config, max_tokens_threshold: int = 800) -> str:
+    """
+    Checks JD length. If it exceeds threshold, uses a fast LLM pass to strip fluff 
+    and return ONLY the requirements. Otherwise, returns raw_jd as-is.
+    """
+    # Quick token estimation (approx 4 chars per token)
+    estimated_tokens = len(raw_jd) // 4
+    
+    if estimated_tokens <= max_tokens_threshold:
+        print(f"JD length ({estimated_tokens} tokens) is within threshold ({max_tokens_threshold}). No cleaning needed.")
+        return raw_jd  # No pre-processing needed! Saves latency and API calls.
+    print(f"JD length ({estimated_tokens} tokens) exceeds threshold ({max_tokens_threshold}). Invoking LLM to clean and condense...")
+
+    cleaner_system_prompt = (
+        "You are an expert technical recruiter and data analyst. Your goal is to condense a job description "
+        "into a structured, rich, yet concise summary. Retain crucial operational, business, team, and technical "
+        "context while omitting repetitive corporate boilerplate."
+    )
+
+    # System prompt strictly instructing the model to condense the text
+    cleaner_user_prompt = f"""Summarize and retain the following key aspects from this job description:
+        1. Seniority & Required Experience: Seniority level, required YOE, education, or background.
+        2. Work Model & Logistics: Work model (Onsite, Hybrid, Remote), location/region, contract type (CDI, full-time, etc.).
+        3. Languages: Spoken human language requirements (e.g., English, French, German).
+        4. Tech Stack & Tools:
+        - Mandatory / Must-have technical skills, tools, and languages.
+        - Nice-to-have / Optional technical skills, frameworks, and domain knowledge.
+        5. Role & Team Context:
+        - Core responsibilities and daily tasks.
+        - Team setup, reporting line, or startup dynamic (e.g., "First data hire", "Reporting to Head of Data").
+        6. Company Domain & Context: Brief note on business domain, product model, or key challenges (e.g., "SaaS Studio handling payment & analytics data").
+        7. Critical Role Requirements: Key soft skills, autonomy expectations, or specific domain requirements.
+
+        OMIT ONLY: Multi-stage recruitment interview steps, generic employee benefits/perks (e.g., gym pass, offsite trips, coffee budget), standard corporate fluff, and legal disclaimer blocks.
+
+        JOB DESCRIPTION:
+        {raw_jd}"""
+
+
+    # Call the model without schema enforcement for maximum speed & minimal overhead
+    # Note: Using a lightweight model like gpt-4o-mini / gemini-flash if available, or config.DEFAULT_ANALYSIS_MODEL
+    cleaned_text: str = client.chat.completions.create(
+        model=config.DEFAULT_CONVERSATION_MODEL,
+        api_base=config.API_BASE,
+        response_model=str,
+        messages=[
+            {"role": "system", "content": cleaner_system_prompt},
+            {"role": "user", "content": cleaner_user_prompt}
+        ],
+        temperature=0.0,  # Zero temperature for deterministic extraction
+        extra_body={"num_ctx": 16384, "keep_alive": config.KEEP_ALIVE}
+    )
+
+    return cleaned_text.strip()
+
 def analyze_job(
     title: str, 
     company: str, 
+    contract_type: str, 
+    seniority_level: str, 
+    industry: str, 
     description: str, 
     output_schema: Type[T] = JobEvaluation  # Defaults to JobEvaluation
 ) -> T:
@@ -64,16 +124,22 @@ def analyze_job(
     )
 
     cv_text = extract_pdf_text(config.CV_PATH)
+
+    processed_description = get_cleaned_jd(description, client, config, max_tokens_threshold=800)
+
     user_content = f"""{user_template}
-        --- CANDIDATE CV / PROFILE ---
-        {cv_text}
+--- CANDIDATE CV / PROFILE ---
+{cv_text}
 
-        --- JOB POSTING ---
-        Title: {title}
-        Company: {company}
+--- JOB POSTING ---
+Title: {title}
+Company: {company}
+Contract Type: {contract_type}
+Seniority Level: {seniority_level}
+Industry: {industry}
 
-        Description:
-        {description}"""
+--- JOB DESCRIPTION ---
+{processed_description}"""
 
     # Extract JSON schema directly from the passed-in model class
     return client.chat.completions.create(
@@ -119,11 +185,14 @@ def run_analysis_pipeline(batch_size: int = 10):
         title = job["title"] or "Unknown Title"
         company = job["company"] or "Unknown Company"
         description = job["full_description"]
+        contract_type = job["contract_type"] or "Unknown Contract Type"
+        seniority_level = job["seniority_level"] or "Unknown Seniority Level"
+        industry = job["industry"] or "Unknown Industry"
 
         print(f"[{idx}/{len(jobs)}] Evaluating: {title} @ {company} (ID: {job_id})")
 
         try:
-            eval_result: JobEvaluation = analyze_job(title, company, description, output_schema=JobEvaluation)
+            eval_result: JobEvaluation = analyze_job(title, company, contract_type, seniority_level, industry, description, output_schema=JobEvaluation)
 
             role: RoleClassification = eval_result.role_classification
             inclusivity: LanguageAndInclusivity = eval_result.inclusivity

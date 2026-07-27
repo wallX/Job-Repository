@@ -13,7 +13,7 @@ from analyzer import run_analysis_pipeline  # Your existing pipeline function
 class JobAnalyzerWorker(BaseWorker):
     def __init__(self):
         # Service name, 15-second sleep interval, batch size of 10
-        super().__init__(service_name="JobAnalyzer", poll_interval=15, batch_size=10)
+        super().__init__(service_name="JobAnalyzer", poll_interval=999999, batch_size=1)
 
     def process_batch(self, batch_size: int) -> int:
         # Executes your pipeline and returns the count of processed items
