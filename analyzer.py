@@ -73,7 +73,7 @@ def analyze_job(
         Company: {company}
 
         Description:
-        {description[:20000]}"""
+        {description}"""
 
     # Extract JSON schema directly from the passed-in model class
     return client.chat.completions.create(
