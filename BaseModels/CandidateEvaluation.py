@@ -1,100 +1,130 @@
-from typing import List, Literal
+import re
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 class CandidateEvaluation(BaseModel):
-    """Direct comparison between candidate profile and JD requirements."""
-    
-    has_language_dealbreaker: bool = Field(
+    """Universal Candidate vs. Job Description Evaluation."""
+
+    evaluation_reasoning: str = Field(
         description=(
-            "MUST BE TRUE ONLY IF the job explicitly requires a mandatory language proficiency that the candidate lacks "
-            "(e.g., 'Must speak fluent French' or 'German C1 required').\n"
-            "MUST BE FALSE if the language is described as 'a plus', 'nice to have', 'optional', or if the working language is English."
+            "Step-by-step thinking:\n"
+            "1) Identify the Job's Primary Daily Duty.\n"
+            "2) Compare against Candidate's Core Disciplines.\n"
+            "3) Separate Core Domain match/disconnect from Secondary Tool gaps.\n"
+            "4) Assign flags and rank."
         )
+    )
+
+    has_language_dealbreaker: bool = Field(
+        description="MUST BE TRUE ONLY IF the role strictly requires a spoken human language the candidate lacks."
     )
 
     has_yoe_dealbreaker: bool = Field(
         default=False,
-        description=(
-            "MUST BE FALSE if the role is Junior, Entry-Level, Graduate, or Intern "
-            "(even if metadata incorrectly flags it as Mid/Senior).\n"
-            "MUST BE FALSE if there are conflicting seniority signals (e.g., 'Graduate' in title but 'Mid-Senior' in metadata).\n"
-            "MUST BE TRUE ONLY IF all of the following are met:\n"
-            "1) The role is strictly Mid, Senior, Lead, or Principal.\n"
-            "2) The required YOE is explicitly far higher than candidate's experience (e.g., candidate has 1 YOE applying for a 5-7+ YOE Senior role).\n"
-            "When in doubt or if data is contradictory, default to FALSE."
-        )
+        description="MUST BE TRUE ONLY IF the role is strictly Mid/Senior/Lead AND candidate has severely insufficient YOE."
     )
-
 
     has_stack_domain_dealbreaker: bool = Field(
         description=(
-            "MUST BE TRUE ONLY IF there is an absolute macro-domain disconnect "
-            "(e.g., pure Frontend applying for Senior Data Engineer/ML) where the candidate "
-            "lacks all primary core engineering principles for the role.\n"
-            "MUST BE FALSE if the candidate works within the same broad engineering domain, "
-            "even if they lack specific cloud services, databases, frameworks, Git providers, or project management tools.\n"
-            "Treat specific vendor tools, cloud services, and secondary stack variances as transferable skills, NOT dealbreakers."
+            "MUST BE TRUE IF candidate lacks the core primary discipline required for the job's main daily duties (e.g., lacking GTK+/Qt/C++ for a Linux Desktop GUI role).\n"
+            "MUST BE FALSE IF candidate covers the primary daily discipline, even if secondary tools or frameworks are missing."
         )
     )
 
+    missing_language: Optional[str] = Field(
+        default=None,
+        description=(
+            "If has_language_dealbreaker is True, state the exact missing spoken language (e.g., 'French', 'German C1', 'Dutch'). "
+            "Leave None or empty if no language dealbreaker exists."
+        )
+    )
 
     has_critical_dealbreakers: bool = Field(
         default=False,
-        description=(
-            "Combined master flag. Set to True IF ANY of has_language_dealbreaker or has_yoe_dealbreaker, are True. "
-            "But has_stack_domain_dealbreaker alone does NOT trigger this flag unless it is accompanied by one of the other two dealbreakers."
-        ),
+        description="Auto-computed in code based on Language and YOE dealbreakers."
     )
 
     cv_match_rank: Literal["Unfit", "Borderline", "Fit"] = Field(
         description=(
-            "STRICT EVALUATION RULES:\n"
-            "- IF has_critical_dealbreakers is True -> MUST BE 'Unfit'. NO EXCEPTIONS.\n"
-            "- Select 'Fit' ONLY if candidate meets the core domain, required YOE, AND all primary technologies in the stack.\n"
-            "- Select 'Borderline' if candidate has strong domain fit (e.g., Backend or Fullstack background) but lacks 1 or more specific technologies in the required stack (e.g., strong Java/Spring backend but missing Angular frontend).\n"
-           # "- Select 'Borderline' if there are inconsistencies in the proposal's YOE (like telling 'Graduate', 'Entry Level' or 'Junior' in on place and other level on another) or skill claims that require further verification).\n"
-            "- Select 'Unfit' ONLY if has_critical_dealbreakers is True."
+            "- 'Fit': Matches primary domain, YOE, and core stack with minimal gaps.\n"
+            "- 'Borderline': Strong primary domain match, but missing secondary/peripheral tools or minor stack items.\n"
+            "- 'Unfit': Active dealbreaker in Language, YOE, or Primary Macro Domain."
         )
     )
 
     stack_gap: List[str] = Field(
-        description="List of required technologies/tools mentioned in JD that are missing in Candidate Profile."
-    )
-    
-    cv_match_reasons: str = Field(
-        min_length=10,
-        description=(
-            "Detailed plain text explanation supporting the assigned cv_match_rank. "
-            "MUST include a clear breakdown of the dealbreaker status flags "
-            "(Language, YOE, Stack Domain, Critical Dealbreaker)."
-        ),
+        description="List of technologies or tools requested in the JD that are missing from candidate profile."
     )
 
-    # UPGRADE: Mechanically enforces the dealbreaker rule so the LLM cannot violate it
+    # --- 1. MANDATORY SEPARATE FIELDS (FORCES THE LLM TO WRITE BOTH) ---
+    macro_domain_assessment: str = Field(
+        description=(
+            "MUST START WITH 'On a macro domain level, ...'. "
+            "Explicitly compare the candidate's core engineering discipline (e.g., Java Backend / Cloud) "
+            "against the job's main daily duties (e.g., building Linux Desktop GUI apps or Integration APIs)."
+        )
+    )
+
+    specific_tooling_gaps: str = Field(
+        description=(
+            "MUST START WITH 'Regarding specific tooling, ...'. "
+            "Detail the specific secondary frameworks, libraries, vendor tools, or nice-to-have items missing."
+        )
+    )
+
+    # --- 2. AUTO-ASSEMBLED FIELD (NO LLM HALLUCINATION) ---
+    cv_match_reasons: str = Field(
+        default="",
+        description="Auto-assembled in Python code from the two fields above."
+    )
+
     @model_validator(mode="after")
-    def enforce_dealbreaker_logic(self) -> "CandidateEvaluation":
-        # 1. Sync master flag
-        self.has_critical_dealbreakers = (
-            self.has_language_dealbreaker
-            or self.has_yoe_dealbreaker
-            or self.has_stack_domain_dealbreaker
+    def enforce_universal_logic(self) -> "CandidateEvaluation":
+        # 1. Sync Critical Dealbreakers
+        self.has_critical_dealbreakers = bool(
+            self.has_language_dealbreaker or self.has_yoe_dealbreaker
         )
 
-        # 2. Enforce rank alignment
-        if self.has_critical_dealbreakers:
-            self.cv_match_rank = "Unfit"
+        # 2. Prevent Cloud Vendor Mismatches (AWS vs Azure) from triggering Stack Dealbreaker
+        azure_aws_keywords = ["azure", ".net", "c#", "service bus", "logic apps", "power apps"]
+        reason_lower = (self.macro_domain_assessment + " " + self.specific_tooling_gaps).lower()
+        
+        if self.has_stack_domain_dealbreaker and not self.has_critical_dealbreakers:
+            if any(kw in reason_lower for kw in azure_aws_keywords):
+                # Force stack dealbreaker to False since AWS/Cloud backend transfers to Azure/Cloud backend
+                self.has_stack_domain_dealbreaker = False
 
-        # 3. Mechanically append flag values to cv_match_reasons to ensure exact logging
+        # 3. DYNAMICALLY INJECT MISSING LANGUAGE INTO MACRO ASSESSMENT
+        if self.has_language_dealbreaker:
+            lang_name = self.missing_language if self.missing_language else "required spoken language"
+            
+            # Preserve technical fit, but state the explicit missing language
+            self.macro_domain_assessment = (
+                f"On a macro domain level, the candidate's core background in Backend Engineering, Distributed Systems, "
+                f"and Cloud Infrastructure aligns with the core technical domain. However, the role strictly requires mandatory "
+                f"fluency in {lang_name}, which is missing on the candidate's profile."
+            )
+
+        # 4. Final Rank Alignment
+        if self.has_critical_dealbreakers or self.has_stack_domain_dealbreaker:
+            self.cv_match_rank = "Unfit"
+        else:
+            if self.cv_match_rank == "Unfit":
+                self.cv_match_rank = "Borderline" if len(self.stack_gap) > 0 else "Fit"
+
+        # 5. Assemble final cv_match_reasons
         flag_summary = (
             f" [Dealbreakers -> Language: {self.has_language_dealbreaker}, "
             f"YOE: {self.has_yoe_dealbreaker}, "
             f"Stack/Domain: {self.has_stack_domain_dealbreaker}, "
             f"Critical: {self.has_critical_dealbreakers}]"
         )
-
-        if flag_summary not in self.cv_match_reasons:
-            self.cv_match_reasons = (
-                self.cv_match_reasons.strip() + flag_summary
-            )
+        
+        self.cv_match_reasons = (
+            f"{self.macro_domain_assessment.strip()}\n\n"
+            f"{self.specific_tooling_gaps.strip()}"
+            f"{flag_summary}"
+        )
 
         return self
+

@@ -72,23 +72,33 @@ def get_cleaned_jd(raw_jd: str, client, config, max_tokens_threshold: int = 800)
     )
 
     # System prompt strictly instructing the model to condense the text
-    cleaner_user_prompt = f"""Summarize and retain the following key aspects from this job description:
-        1. Seniority & Required Experience: Seniority level, required YOE, education, or background.
-        2. Work Model & Logistics: Work model (Onsite, Hybrid, Remote), location/region, contract type (CDI, full-time, etc.).
-        3. Languages: Spoken human language requirements (e.g., English, French, German).
-        4. Tech Stack & Tools:
-        - Mandatory / Must-have technical skills, tools, and languages.
-        - Nice-to-have / Optional technical skills, frameworks, and domain knowledge.
-        5. Role & Team Context:
-        - Core responsibilities and daily tasks.
-        - Team setup, reporting line, or startup dynamic (e.g., "First data hire", "Reporting to Head of Data").
-        6. Company Domain & Context: Brief note on business domain, product model, or key challenges (e.g., "SaaS Studio handling payment & analytics data").
-        7. Critical Role Requirements: Key soft skills, autonomy expectations, or specific domain requirements.
+    cleaner_user_prompt = f"""Summarize and retain the key aspects from this job description. 
 
-        OMIT ONLY: Multi-stage recruitment interview steps, generic employee benefits/perks (e.g., gym pass, offsite trips, coffee budget), standard corporate fluff, and legal disclaimer blocks.
+You MUST STRICTLY divide your response into two distinct sections: '=== SPECIFIC ROLE REQUIREMENTS ===' and '=== COMPANY CONTEXT & OPERATIONS ==='. 
+This separation is MANDATORY to prevent confusing the company's general industry, broad tech stack, or daily business operations with the actual skills required for the candidate.
 
-        JOB DESCRIPTION:
-        {raw_jd}"""
+=== SPECIFIC ROLE REQUIREMENTS ===
+Focus ONLY on what the candidate actually needs to do and know for this specific position:
+1. Seniority & Required Experience: Seniority level, required YOE, education, or background.
+2. Work Model & Logistics: Work model (Onsite, Hybrid, Remote), location/region, contract type (CDI, full-time, etc.).
+3. Languages: Spoken human language requirements (e.g., English, French, German).
+4. Role-Specific Skills & Tools: 
+   - Mandatory / Must-have skills, tools, and technical knowledge explicitly tied to the daily responsibilities.
+   - Nice-to-have / Optional skills for the role.
+   (CRITICAL: Include skills, tools, or domain knowledge here ONLY if the candidate strictly needs them to perform this job. Do not include company industry knowledge unless explicitly required for the role itself.)
+5. Role & Team Context: Core responsibilities, daily tasks, and team setup.
+6. Critical Role Requirements: Key soft skills, autonomy expectations, or specific functional requirements.
+
+=== COMPANY CONTEXT & OPERATIONS ===
+Focus on background information that provides context but MUST NOT be treated as mandatory candidate requirements:
+1. Company Industry & Business Domain: What the company does, its product, and overarching goals (e.g., "Agricultural company raising chickens", "SaaS Studio handling payments").
+2. General Company Operations: Any tools, infrastructure, frameworks, or business practices mentioned as part of the company's broader operations that are NOT explicitly tied to the daily duties of this specific role.
+
+OMIT ONLY: Multi-stage recruitment interview steps, generic employee benefits/perks (e.g., gym pass, offsite trips, coffee budget), standard corporate fluff, and legal disclaimer blocks.
+
+RAW JOB POSTING:
+{raw_jd}"""
+
 
 
     # Call the model without schema enforcement for maximum speed & minimal overhead
@@ -125,7 +135,7 @@ def analyze_job(
 
     cv_text = extract_pdf_text(config.CV_PATH)
 
-    processed_description = get_cleaned_jd(description, client, config, max_tokens_threshold=800)
+    processed_description = get_cleaned_jd(description, client, config, max_tokens_threshold=1200)
 
     user_content = f"""{user_template}
 --- CANDIDATE CV / PROFILE ---

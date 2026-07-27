@@ -67,6 +67,11 @@ def init_db():
         "cv_match_reasons": "TEXT DEFAULT NULL",
         "application_status": "TEXT DEFAULT 'Not Applied'",
         "application_notes": "TEXT DEFAULT ''",
+
+        # Soft delete / Archival
+        "archived": "INTEGER DEFAULT 0",
+        "reason_for_archival": "TEXT DEFAULT NULL",
+
         
         # Timestamps
         "added_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
@@ -359,23 +364,26 @@ def fetch_existing_tags() -> list[str]:
     return all_unique_tags
 
 
-def load_jobs_df() -> pd.DataFrame:
+def load_jobs_df(archived: bool = False) -> pd.DataFrame:
     """Loads all jobs from SQLite into a DataFrame ordered by newest first."""
     with get_connection() as conn:
-        return pd.read_sql("SELECT * FROM jobs ORDER BY added_at DESC", conn)
+        query = "SELECT * FROM jobs WHERE archived = ? ORDER BY added_at DESC"
+        return pd.read_sql(query, conn, params=(int(archived),))
 
 
 
-def update_job_application_data(job_id: str, application_status: str, application_notes: str = None) -> bool:
+
+def update_job_application_data(job_id: str, application_status: str, application_notes: str = None, cv_match_rank: str = None) -> bool:
     """Updates application status and notes for a specific job."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE jobs 
             SET application_status = ?,
-                application_notes = COALESCE(?, application_notes)
+                application_notes = COALESCE(?, application_notes),
+                cv_match_rank = COALESCE(?, cv_match_rank)
             WHERE job_id = ?
-        """, (application_status, application_notes, job_id))
+        """, (application_status, application_notes, cv_match_rank, job_id))
         conn.commit()
         return True
 
@@ -410,6 +418,26 @@ def clear_chat_history(job_id: str):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM job_chat_history WHERE job_id = ?", (str(job_id),))
         conn.commit()
+
+
+def archive_job(job_id: str, reason: str = None) -> bool:
+    """Soft-deletes a job by setting archived = 1 and storing the reason."""
+    query = """
+        UPDATE jobs 
+        SET archived = 1, reason_for_archival = ? 
+        WHERE job_id = ?
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (reason, job_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"Error archiving job {job_id}: {e}")
+        return False
+
+
 
 if __name__ == "__main__":
     init_db()

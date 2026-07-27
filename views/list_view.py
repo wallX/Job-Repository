@@ -17,6 +17,16 @@ import db
 import config
 
 
+ARCHIVE_REASONS = [
+    "Not Qualified / Stack Gap",
+    "Low Salary / Benefits",
+    "Bad Location / Remote Friction",
+    "Position Closed / Expired",
+    "Not Interested",
+    "Other (Custom Reason)"
+]
+
+
 def load_text_file(file_path) -> str:
     """Reads content from a file path."""
     p = Path(file_path)
@@ -105,7 +115,7 @@ STATUS_COLORS = {
 }
 
 # Match rank options and associated color mappings
-MATCH_RANK_OPTIONS = ["Fit", "Unfit", "Borderline", "Unknown"]
+MATCH_RANK_OPTIONS = ["Fit", "Borderline", "Unfit", "Unknown"]
 
 MATCH_RANK_COLORS = {
     "Fit":        {"bg": "#dcfce7", "text": "#15803d", "border": "#86efac"}, # Green
@@ -245,14 +255,37 @@ def show_job_details_dialog(job: pd.Series):
     # --- EDITABLE APPLICATION TRACKING (EXPANDER DROPDOWN) ---
     with st.expander("📝 Application Tracking & Notes", expanded=False):
         current_notes = job.get("application_notes") or ""
-
+        col_status, col_rank = st.columns(2)
         with st.form(f"dialog_app_form_{job_id}"):
-            new_status = st.selectbox(
-                "Application Status",
-                options=STATUS_OPTIONS,
-                index=STATUS_OPTIONS.index(current_status),
-                key=f"dialog_status_{job_id}"
-            )
+            with col_status:
+            
+                new_status = st.selectbox(
+                    "Application Status",
+                    options=STATUS_OPTIONS,
+                    index=STATUS_OPTIONS.index(current_status),
+                    key=f"dialog_status_{job_id}"
+                )
+
+
+            display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
+
+            if cv_rank_val == "Unknown":
+                display_options = ["Unknown"]
+                default_index = display_options.index("Unknown")
+            else:
+                display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
+                default_index = display_options.index(cv_rank_val)
+
+            
+            with col_rank:
+                new_rank = st.selectbox(
+                    "Override CV Match Rank",
+                    options=display_options,
+                    index=default_index,
+                    help="Manually override the AI's CV match evaluation",
+                    disabled=cv_rank_val == "Unknown",
+                    key=f"dialog_rank_{job_id}"
+                )
 
             new_notes = st.text_area(
                 "Application Notes",
@@ -267,7 +300,8 @@ def show_job_details_dialog(job: pd.Series):
                 db.update_job_application_data(
                     job_id=job_id, 
                     application_status=new_status, 
-                    application_notes=new_notes
+                    application_notes=new_notes,
+                    cv_match_rank=new_rank
                 )
                 st.success("✅ Application status and notes updated!")
                 st.rerun()
@@ -483,7 +517,8 @@ def render_job_card(job: pd.Series):
             #st.markdown(render_badge_html(app_status, color_map=STATUS_COLORS, options_list=STATUS_OPTIONS), unsafe_allow_html=True)
 
         with col_actions:
-            btn_c1, btn_c2 = st.columns(2)
+            # 1. Expand columns from 2 to 3
+            btn_c1, btn_c2, btn_c3 = st.columns([1.2, 1.2, 1.2])
             
             with btn_c1:
                 if st.button("Details", key=f"details_{job_id}", use_container_width=True):
@@ -492,6 +527,36 @@ def render_job_card(job: pd.Series):
             with btn_c2:
                 if company_url:
                     st.link_button("Offer", company_url, use_container_width=True)
+
+            # 2. Add Delete Popover Button
+            with btn_c3:
+                with st.popover("Archive", type="primary", help="Archive job offer", use_container_width=True):
+                    st.markdown("**Archive this job?**")
+                    
+                    selected_reason = st.selectbox(
+                        "Reason for archiving:",
+                        options=ARCHIVE_REASONS,
+                        key=f"archive_reason_select_{job_id}"
+                    )
+                    
+                    # Show a custom text input if 'Other' is selected
+                    custom_reason = ""
+                    if selected_reason == "Other (Custom Reason)":
+                        custom_reason = st.text_input(
+                            "Enter custom reason:", 
+                            placeholder="e.g., Too far away...",
+                            key=f"archive_reason_custom_{job_id}"
+                        )
+                    
+                    if st.button("Confirm Archive", key=f"confirm_archive_{job_id}", type="primary", use_container_width=True):
+                        # Use custom text if 'Other' selected, otherwise use dropdown option
+                        final_reason = custom_reason.strip() if selected_reason == "Other (Custom Reason)" else selected_reason
+                        
+                        # Execute soft delete in DB
+                        db.archive_job(job_id=job_id, reason=final_reason or "No reason provided")
+                        
+                        st.toast("📦 Job offer archived!")
+                        st.rerun()
 
         st.divider()
 

@@ -133,7 +133,7 @@ def run_detail_scraper(batch_size: int):
 
         page = context.new_page()
 
-        page.goto('https://whatismyipaddress.com', wait_until="domcontentloaded", timeout=15000);
+        #page.goto('https://whatismyipaddress.com', wait_until="domcontentloaded", timeout=15000);
         #time.sleep(120)
         for idx, job in enumerate(jobs, 1):
             job_id = job["job_id"]

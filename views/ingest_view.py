@@ -54,6 +54,7 @@ def ingest_urls(urls: list[str] | str, search_terms: list[str] = None):
             print(f"  [{idx}/{len(url_list)}] Appended Terms to Existing: {job_id}")
 
     print(f"\n Finished: {added_count} new job(s) added, {updated_count} updated with search terms.")
+    return f"Job {source}/{job_id}: {added_count} new job(s) added, {updated_count} updated with search terms."
 
 def render_ingest_view():
     st.subheader("➕ Ingest New Job Offer")
@@ -72,7 +73,7 @@ def render_ingest_view():
         selected_tags = st.multiselect(
             "Search Terms / Tags",
             options=st.session_state.available_tags,
-            default=["Junior Software Engineer"] if "Junior Software Engineer" in st.session_state.available_tags else [],
+            default=["Software Engineer"] if "Software Engineer" in st.session_state.available_tags else [],
             accept_new_options=True,
             placeholder="Select or type to add search terms...",
             help="Select existing terms or type a custom term and press Enter."
@@ -97,9 +98,9 @@ def render_ingest_view():
                     st.session_state.available_tags.sort()
 
                     # 3. Trigger ingestion with normalized search terms
-                    ingest_urls(urls=clean_url, search_terms=normalized_tags)
+                    result =ingest_urls(urls=clean_url, search_terms=normalized_tags)
 
-                    st.success("✅ Job offer queued! Search terms normalized and added.")
+                    st.success(f"✅ Job offer queued! {result}.")
 
                 except Exception as e:
                     st.error(f"Failed to ingest job offer: {e}")
