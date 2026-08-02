@@ -2,7 +2,7 @@
 
 Job Scraper is a local job-aggregation and analysis app built around Streamlit, SQLite, Playwright-based scraping, and LLM-driven job evaluation. It collects job postings from supported sources, stores them in a local database, enriches the records with extracted metadata, and uses a CV-aware analysis pipeline to score fit, summarize roles, and support manual tracking.
 
-
+![WebUI](docs/img/main_page.png)
 
 ## Project Summary
 
