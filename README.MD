@@ -2,6 +2,12 @@
 
 Job Scraper is a local job-aggregation and analysis app built around Streamlit, SQLite, Playwright-based scraping, and LLM-driven job evaluation. It collects job postings from supported sources, stores them in a local database, enriches the records with extracted metadata, and uses a CV-aware analysis pipeline to score fit, summarize roles, and support manual tracking.
 
+
+
+## Project Summary
+
+This is a useful prototype that already covers the full job-search loop: capture, scrape, analyze, and review. It was intentionally built as a fast, casual and fun experiment rather than a scalable product, so some rough edges are expected. The biggest strengths are the clear workflow and the combined use of SQLite, Streamlit, and LLM-based evaluation. The biggest weaknesses are the absence of tests, duplicated database logic, hardcoded runtime assumptions, and inconsistent code quality. If the goal is to evolve this into a reliable personal tool, the next priority should be cleanup and reproducibility before adding more features.
+
 ## Proposal
 
 The project is aiming to become a personal job intelligence hub rather than a simple scraper. It was built in a very casual, exploratory way for fun, without worrying too much about scalable system design or a perfectly clean architecture. The code was assembled in about 3 days, with an LLM used to help with small partial code blocks instead of generating the full project in one shot. The intended workflow is:
@@ -120,7 +126,4 @@ This is a personal job-offer repository and tracking tool. If you want to experi
 8. Run the analyzer service so the LLM compares the job against the candidate profile using the CV PDF and the prompt files.
 9. Review the extracted metadata and LLM results in the dashboard.
 
-## Summary
-
-This is a useful prototype that already covers the full job-search loop: capture, scrape, analyze, and review. It was intentionally built as a fast, casual and fun experiment rather than a scalable product, so some rough edges are expected. The biggest strengths are the clear workflow and the combined use of SQLite, Streamlit, and LLM-based evaluation. The biggest weaknesses are the absence of tests, duplicated database logic, hardcoded runtime assumptions, and inconsistent code quality. If the goal is to evolve this into a reliable personal tool, the next priority should be cleanup and reproducibility before adding more features.
 
