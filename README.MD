@@ -6,7 +6,7 @@ Job Scraper is a local job-aggregation and analysis app built around Streamlit, 
 
 ## Project Summary
 
-This is a useful prototype that already covers the full job-search loop: capture, scrape, analyze, and review. It was intentionally built as a fast, casual and fun experiment rather than a scalable product, so some rough edges are expected. The biggest strengths are the clear workflow and the combined use of SQLite, Streamlit, and LLM-based evaluation. The biggest weaknesses are the absence of tests, duplicated database logic, hardcoded runtime assumptions, and inconsistent code quality. If the goal is to evolve this into a reliable personal tool, the next priority should be cleanup and reproducibility before adding more features.
+This is a useful prototype that already covers the full job-search loop: capture, scrape, analyze, and review. It was intentionally built as a fast, casual and fun experiment rather than a scalable product, so some rough edges are expected. The biggest strengths are the clear workflow from job ingest until job offer evaluation and a dashboard that allows me to keep track of whether a job is worth applying to, whether I already applied, and how the application is progressing over time. The biggest weaknesses are the absence of tests, duplicated logic, hardcoded runtime assumptions, and inconsistent code quality. Security hardening is intentionally a low priority here because this tool is meant to run locally, not as a public web service. If the goal is to evolve this into a reliable tool, the next priority should be cleanup, code scalability and reproducibility before adding more features.
 
 ## Proposal
 
@@ -113,6 +113,9 @@ In practice, the usage flow is simple:
 - [ ] Add a setup and run guide for first-time users.
 - [ ] Add dependency pinning or a reproducible dependency lock strategy.
 - [ ] Review HTML rendering for safety and long-term maintainability.
+- [ ] Improve the BaseModels to better match the real evaluation outputs.
+- [ ] Better tune the LLM evaluation base prompt so the scoring and reasons are more accurate.
+- [ ] Add pagination to the job listing view.
 
 ## Suggested Run Flow
 This is a personal job-offer repository and tracking tool. If you want to experiment with it, you need Python and an Ollama-like API endpoint.
