@@ -385,13 +385,13 @@ def load_jobs_df(archived: bool = False) -> pd.DataFrame:
 
 
 
-def update_job_application_data(job_id: str, application_status: str, application_notes: str = None, cv_match_rank: str = None) -> bool:
+def update_job_application_data(job_id: str, application_status: str = None, application_notes: str = None, cv_match_rank: str = None) -> bool:
     """Updates application status and notes for a specific job."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE jobs 
-            SET application_status = ?,
+            SET application_status = COALESCE(?, application_status),
                 application_notes = COALESCE(?, application_notes),
                 cv_match_rank = COALESCE(?, cv_match_rank)
             WHERE job_id = ?

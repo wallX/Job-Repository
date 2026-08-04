@@ -32,6 +32,7 @@ class JobEvaluation(BaseModel):
     role_classification: RoleClassification = Field(
         description="Classification regarding role level, YOE requirements, and work setup."
     )
+
     
     inclusivity: LanguageAndInclusivity = Field(
         description="Assessment of language friction, visa availability, and foreign friendliness."

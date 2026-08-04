@@ -1,5 +1,34 @@
-from typing import List
-from pydantic import BaseModel, Field
+from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
+
+
+class LanguageRequirement(BaseModel):
+    language: str = Field(
+        description=(
+            "Full English name of the spoken human language (e.g., 'English', 'Spanish', 'Portuguese').\n"
+            "STRICT RULES:\n"
+            "1. DO NOT use 2-letter ISO codes (e.g., 'en', 'pt', 'es'). Use full names.\n"
+            "2. DO NOT include meta-tags or generic keys (e.g., 'language_proficiency', 'spoken_language').\n"
+            "3. DO NOT include programming languages (e.g., 'Python', 'JavaScript')."
+        )
+    )
+    
+    level: Optional[str] = Field(
+        default=None,
+        description=(
+            "The proficiency level OR qualifying descriptor/adjective stated in the job offer.\n"
+            "EXAMPLES:\n"
+            "- Proficiency levels: 'A1', 'B2', 'C1', 'Native', 'Fluent', 'Conversational'\n"
+            "- Requirement descriptors: 'Is a plus', 'Optional', 'Preferred', 'Nice to have', 'Bonus'\n"
+            "- Combined (if both exist): 'Fluent / Is a plus'\n"
+            "Set to null ONLY if no level, adjective, or status descriptor is mentioned."
+        )
+    )
+
+    @property
+    def formatted(self) -> str:
+        """Helper to get standardized string output like 'English C1' or 'English'."""
+        return f"{self.language} {self.level}".strip() if self.level else self.language
 
 class LanguageAndInclusivity(BaseModel):
     """Evaluation of language requirements, sponsorship capabilities, and international accessibility."""
@@ -15,16 +44,14 @@ class LanguageAndInclusivity(BaseModel):
     )
 
     # UPGRADE: Added min_length to prevent empty language lists
-    language_llm: List[str] = Field(
+    language_llm: List[LanguageRequirement] = Field(
         min_length=1,
         description=(
-            "List ALL SPOKEN human languages (e.g., English, Spanish, German) required or implied by the Job Description (IGNORE CANDIDATE CV). DO NOT list programming languages.\n"
-            "RULES:\n"
-            "1. Include the language the Job Description itself is written in.\n"
-            "2. DO NOT use 2-letter ISO codes (e.g., 'pt', 'en'). Use full English names.\n"
-            "3. DO NOT include meta-tags (e.g., 'language_proficiency').\n"
-            "FORMAT: '[Full Language Name] [Level if specified]'\n"
-            "Examples: ['Portuguese Native/Fluent', 'English B2'], ['German C1 Required'], ['English']."
+            "List all spoken human languages required or implied by the Job Description "
+            "(including the language the job posting itself is written in).\n\n"
+            "CRITICAL INSTRUCTION:\n"
+            "The input context contains both a Candidate CV and a Job Description. "
+            "You MUST IGNORE the Candidate CV entirely. Extract ONLY language requirements requested by the employer."
         )
     )
 
@@ -49,3 +76,14 @@ class LanguageAndInclusivity(BaseModel):
         pattern=r"^Language Requirements:.*; Visa Sponsorship:.*; Cultural Inclusivity:.*$",
         description="Must strictly follow format: 'Language Requirements: <details>; Visa Sponsorship: <details>; Cultural Inclusivity: <details>'."
     )
+
+    @field_validator("language_llm", mode="after")
+    @classmethod
+    def convert_to_string_list(cls, v):
+        formatted_list = []
+        for item in v:
+            if isinstance(item, LanguageRequirement):
+                formatted_list.append(item.formatted)
+            else:
+                formatted_list.append(str(item))
+        return formatted_list

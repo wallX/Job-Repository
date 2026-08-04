@@ -159,16 +159,43 @@ def render_badge_html(
     )
 
 def on_status_change(job_id: str, selectbox_key: str):
-    """Callback triggered when the status dropdown changes directly on a card."""
     new_status = st.session_state[selectbox_key]
     db.update_job_application_data(job_id=job_id, application_status=new_status)
-    st.toast(f"Updated status to '{new_status}'")
+    
+    st.session_state["pending_toast"] = f"Updated status to '{new_status}'"
+    st.session_state["needs_app_rerun"] = True
+    st.session_state["keep_dialog_open"] = True  # <--- Signal to keep dialog open on rerun
+
+
+def on_rank_change(job_id: str, selectbox_key: str):
+    new_rank = st.session_state[selectbox_key]
+    db.update_job_application_data(job_id=job_id, cv_match_rank=new_rank)
+    
+    st.session_state["pending_toast"] = f"Updated rank to '{new_rank}'"
+    st.session_state["needs_app_rerun"] = True
+    st.session_state["keep_dialog_open"] = True  # <--- Signal to keep dialog open on rerun
+
+
+
+
+
 
 
 @st.dialog("Full Job Details & Application Notes", width="large")
-def show_job_details_dialog(job: pd.Series):
+def show_job_details_dialog(job: pd.Series, **kwargs):
     """Modal details view with application status dropdown, notes, LLM chat, and job metrics."""
+    
+    # STEP 1: If a dropdown changed, trigger full app rerun
+    if st.session_state.pop("needs_app_rerun", False):
+        st.rerun(scope="app")
+
+    # STEP 2: Display pending toast cleanly
+    if "pending_toast" in st.session_state:
+        st.toast(st.session_state.pop("pending_toast"))
+
     job_id = str(job.get("job_id"))
+
+
     title = job.get("title") or "Untitled Job"
     company = job.get("company") or "Unknown Company"
 
@@ -246,29 +273,50 @@ def show_job_details_dialog(job: pd.Series):
     else:
         st.caption("Pending LLM analysis...")
 
+    # --- 2. Rank Options Logic ---
+    if cv_rank_val == "Unknown":
+        display_options = ["Unknown"]
+        default_index = 0
+    else:
+        display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
+        default_index = display_options.index(cv_rank_val) if cv_rank_val in display_options else 0
 
-    # Adjusted weights so Column 1 tightly wraps its longer button label
-    st.markdown("""
-        <style>
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stLinkButton"]) {
-            gap: 8px !important;
-            justify-content: flex-start !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stLinkButton"]) > div {
-            flex: 0 0 auto !important;
-            width: auto !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
 
-    btn_c1, btn_c2 = st.columns(2, vertical_alignment="center")
+    # --- 3. Horizontal Action Bar ---
+    # Adjust relative column ratios [link, status, rank, archive] as needed
+    c_link, c_status, c_rank, c_archive = st.columns([1.5, 1.2, 1.2, 1], vertical_alignment="bottom")
 
-    with btn_c1:
+    with c_link:
         if job.get("url"):
-            st.link_button("🌐 View Original Job Posting", job["url"])
+            st.link_button("🌐 View Original Job Posting", job["url"], use_container_width=True)
 
-    with btn_c2:
-        with st.popover("Archive", type="primary", help="Archive job offer"):
+    status_key = f"dialog_status_{job_id}_{id(job)}"
+    rank_key = f"dialog_rank_{job_id}_{id(job)}"
+    with c_status:
+        st.selectbox(
+            "Application Status",
+            options=STATUS_OPTIONS,
+            index=STATUS_OPTIONS.index(current_status),
+            key=status_key,
+            on_change=on_status_change,
+            args=(job_id, status_key)  # Pass the new key to the callback!
+        )
+
+
+    with c_rank:
+        st.selectbox(
+            "Override Match Rank",
+            options=display_options,
+            index=default_index,
+            help="Manually override the AI's CV match evaluation",
+            disabled=cv_rank_val == "Unknown",
+            key=rank_key, 
+            on_change=on_rank_change,
+            args=(job_id, rank_key)
+        )
+
+    with c_archive:
+        with st.popover("Archive", type="primary", help="Archive job offer", use_container_width=True):
             st.markdown("**Archive this job?**")
             
             selected_reason = st.selectbox(
@@ -288,8 +336,12 @@ def show_job_details_dialog(job: pd.Series):
             if st.button("Confirm Archive", key=f"confirm_archive_detail_{job_id}", type="primary", use_container_width=True):
                 final_reason = custom_reason.strip() if selected_reason == "Other (Custom Reason)" else selected_reason
                 db.archive_job(job_id=job_id, reason=final_reason or "No reason provided")
+                st.session_state.pop("active_dialog_job_id", None)  # Clean up state so dialog closes
+                st.session_state.pop("keep_dialog_open", None)
                 st.toast("📦 Job offer archived!")
                 st.rerun()
+
+
     
     st.divider()
 
@@ -298,35 +350,35 @@ def show_job_details_dialog(job: pd.Series):
         current_notes = job.get("application_notes") or ""
         col_status, col_rank = st.columns(2)
         with st.form(f"dialog_app_form_{job_id}"):
-            with col_status:
-            
-                new_status = st.selectbox(
-                    "Application Status",
-                    options=STATUS_OPTIONS,
-                    index=STATUS_OPTIONS.index(current_status),
-                    key=f"dialog_status_{job_id}"
-                )
-
-
-            display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
-
-            if cv_rank_val == "Unknown":
-                display_options = ["Unknown"]
-                default_index = display_options.index("Unknown")
-            else:
-                display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
-                default_index = display_options.index(cv_rank_val)
-
-            
-            with col_rank:
-                new_rank = st.selectbox(
-                    "Override CV Match Rank",
-                    options=display_options,
-                    index=default_index,
-                    help="Manually override the AI's CV match evaluation",
-                    disabled=cv_rank_val == "Unknown",
-                    key=f"dialog_rank_{job_id}"
-                )
+            #with col_status:
+            #
+            #    new_status = st.selectbox(
+            #        "Application Status",
+            #        options=STATUS_OPTIONS,
+            #        index=STATUS_OPTIONS.index(current_status),
+            #        key=f"dialog_status_{job_id}"
+            #    )
+#
+#
+            #display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
+#
+            #if cv_rank_val == "Unknown":
+            #    display_options = ["Unknown"]
+            #    default_index = display_options.index("Unknown")
+            #else:
+            #    display_options = [r for r in MATCH_RANK_OPTIONS if r != "Unknown"]
+            #    default_index = display_options.index(cv_rank_val)
+#
+            #
+            #with col_rank:
+            #    new_rank = st.selectbox(
+            #        "Override CV Match Rank",
+            #        options=display_options,
+            #        index=default_index,
+            #        help="Manually override the AI's CV match evaluation",
+            #        disabled=cv_rank_val == "Unknown",
+            #        key=f"dialog_rank_{job_id}"
+            #    )
 
             new_notes = st.text_area(
                 "Application Notes",
@@ -340,12 +392,12 @@ def show_job_details_dialog(job: pd.Series):
             if save_btn:
                 db.update_job_application_data(
                     job_id=job_id, 
-                    application_status=new_status, 
                     application_notes=new_notes,
-                    cv_match_rank=new_rank
                 )
-                st.success("✅ Application status and notes updated!")
+                st.session_state["keep_dialog_open"] = True  # Keep open after saving notes
+                st.toast("✅ Application status and notes updated!")
                 st.rerun()
+
 
     st.divider()
 
@@ -360,8 +412,10 @@ def show_job_details_dialog(job: pd.Series):
         with col_chat_clear:
             if st.button("🗑️ Clear", key=f"clear_chat_{job_id}", use_container_width=True):
                 db.clear_chat_history(job_id)
+                st.session_state["keep_dialog_open"] = True  # Keep open after clearing chat
                 st.toast("Chat history cleared.")
                 st.rerun()
+
 
         # Load chat history from SQLite
         history = db.load_chat_history(job_id)
@@ -456,6 +510,8 @@ def render_job_card(job: pd.Series):
     """Renders a single job offer card with compact action buttons and aligned metadata."""
     
 
+    if "pending_toast" in st.session_state:
+        st.toast(st.session_state.pop("pending_toast"))
     # 1. Company Logo via company_image_url with URL validation
     company_image_url = clean_str(job.get("company_image_url"), default="")
 
@@ -562,8 +618,10 @@ def render_job_card(job: pd.Series):
             btn_c1, btn_c2, btn_c3 = st.columns([1.2, 1.2, 1.2])
             
             with btn_c1:
-                if st.button("Details", key=f"details_{job_id}", use_container_width=True):
-                    show_job_details_dialog(job)
+                if st.button("Details", key=f"btn_open_dialog_{job_id}", use_container_width=True):
+                    st.session_state["active_dialog_job_id"] = job_id
+                    st.session_state["keep_dialog_open"] = True  # <--- Set flag when opening
+                    st.rerun()
 
             with btn_c2:
                 if company_url:
@@ -830,5 +888,24 @@ def render_list_view():
     st.subheader("All Job Offers")
     st.caption(f"Showing **{len(filtered_df)}** of **{len(df)}** job offers (Sorted by **{selected_sort_label} [{sort_order}]**)")
 
+
+
     for idx, job in filtered_df.iterrows():
-        render_job_card(job)
+            render_job_card(job)
+    if st.session_state.get("active_dialog_job_id"):
+        # Only open if an explicit action requested to keep it open
+        if st.session_state.get("keep_dialog_open", False):
+            # Consume the flag so it resets for future reruns
+            st.session_state["keep_dialog_open"] = False
+            
+            active_id = str(st.session_state["active_dialog_job_id"])
+            matching_jobs = df[df["job_id"].astype(str) == active_id]
+            
+            if not matching_jobs.empty:
+                active_job = matching_jobs.iloc[0]
+                show_job_details_dialog(active_job, key=f"dialog_{active_id}")
+            else:
+                st.session_state.pop("active_dialog_job_id", None)
+        else:
+            # User closed the dialog via 'X' or backdrop -> purge the job ID state!
+            st.session_state.pop("active_dialog_job_id", None)
